@@ -5,71 +5,71 @@ This document breaks down the implementation of `gswarm` into independent stages
 ## Milestone 1: Project Scaffolding & Configuration
 **Goal**: Establish the basic CLI structure and filesystem management.
 
-- [ ] Implement `gswarm init`
-    - [ ] Create `.gswarm/` directory structure in the current repo.
-    - [ ] Seed `.gswarm/templates/default` with basic agent structure.
-    - [ ] Create global `~/.gswarm/` structure for Playground swarms.
-- [ ] Implement Template Loading
-    - [ ] Logic to find and load templates (Project-local vs. Global).
-    - [ ] Simple inheritance (custom template merged with `default`).
+- [x] Implement `gswarm init` (**Completed**)
+    - [x] Create `.gswarm/` directory structure in the current repo.
+    - [x] Seed `.gswarm/templates/default` with basic agent structure.
+    - [x] Create global `~/.gswarm/` structure for Playground swarms.
+- [x] Implement Template Loading (**Completed**)
+    - [x] Logic to find and load templates (Project-local vs. Global).
+    - [x] Simple inheritance (custom template merged with `default`).
 
 ## Milestone 2: Container Runtime Abstraction
 **Goal**: Create a unified interface for managing containers across different platforms.
 
-- [ ] Implement `Runtime` interface (Go package)
-    - [ ] Methods: `RunDetached`, `Stop`, `List`, `GetLogs`.
-- [ ] Implement macOS `container` backend.
-    - [ ] Integrate configuration loading (`GEMINI_SANDBOX` env, `settings.json`).
-    - [ ] Implement Network Management (check for `container network` support on macOS).
-- [ ] Implement Linux `docker` backend (optional for first pass).
-- [ ] Verify basic container launch with TTY allocation.
+- [x] Implement `Runtime` interface (Go package) (**Completed**)
+    - [x] Methods: `RunDetached`, `Stop`, `List`, `GetLogs`.
+- [x] Implement macOS `container` backend (**Completed**)
+    - [x] Integrate configuration loading (`GEMINI_SANDBOX` env, `settings.json`). (**Completed**)
+    - [x] Implement Network Management (**N/A** - checked `container` CLI and it has no network subcommands).
+- [x] Implement Linux `docker` backend (**Completed**)
+- [x] Verify basic container launch with TTY allocation (**Completed**)
 
 ## Milestone 3: Basic Agent Provisioning
 **Goal**: Launch isolated agents without Git Worktree complexity.
 
-- [ ] Implement `gswarm start` (v1)
-    - [ ] Select template.
-    - [ ] Copy template to `.gswarm/agents/<name>/home`.
-    - [ ] Implement Environment & Credential Propagation (API keys, gcloud config).
-    - [ ] Launch container with home directory mounted to `/home/gemini`.
-- [ ] Implement basic ID management to prevent name collisions.
-- [ ] Verify agent has unique identity and persistent history.
+- [ ] Implement `gswarm start` (v1) (**In Progress**)
+    - [x] Select template.
+    - [x] Copy template to `.gswarm/agents/<name>/home`.
+    - [ ] Implement Environment & Credential Propagation (API keys, gcloud config). (**Pending** - *Design in .design/auth.md*)
+    - [x] Launch container with home directory mounted to `/home/gemini`.
+- [x] Implement basic ID management to prevent name collisions (**Completed**)
+- [ ] Verify agent has unique identity and persistent history (**Pending**)
 
 ## Milestone 4: Git Worktree Integration
 **Goal**: Enable concurrent agents to work on the same repository safely.
 
-- [ ] Implement Worktree Manager
+- [ ] Implement Worktree Manager (**Pending**)
     - [ ] Logic to create worktrees in `../.gswarm_worktrees/`.
     - [ ] Automatic branch creation for the agent.
-- [ ] Update `gswarm start` (v2)
+- [ ] Update `gswarm start` (v2) (**Pending**)
     - [ ] Mount worktree to `/workspace` in the container.
-    - [ ] Implement macOS-specific path isolation checks (ensure Home and Workspace paths do not overlap to satisfy VirtioFS).
-- [ ] Verify two agents can run in the same swarm with different file states.
+    - [ ] Implement macOS-specific path isolation checks.
+- [ ] Verify two agents can run in the same swarm with different file states (**Pending**)
 
 ## Milestone 5: Swarm Management & Observability
 **Goal**: Provide visibility into running agents and manage their lifecycle.
 
-- [ ] Implement `gswarm list`
+- [ ] Implement `gswarm list` (**Pending**)
     - [ ] Query container runtime for running agents.
     - [ ] Parse and display agent status from `.gemini-status.json`.
-- [ ] Implement `gswarm stop`
+- [ ] Implement `gswarm stop` (**Pending**)
     - [ ] Graceful container termination.
-    - [ ] Git worktree cleanup (removal of worktree and optional branch deletion).
-- [ ] Implement Playground Swarm support (global context).
+    - [ ] Git worktree cleanup.
+- [ ] Implement Playground Swarm support (global context) (**Pending**)
 
 ## Milestone 6: Interactivity & Human-in-the-Loop
 **Goal**: Support "detached" operation with the ability to intervene.
 
-- [ ] Implement `gswarm attach`
+- [ ] Implement `gswarm attach` (**Pending**)
     - [ ] Connect host TTY to the running container's session.
     - [ ] Ensure escape sequences (Ctrl-P, Ctrl-Q) work for detaching.
-- [ ] Implement status-driven alerts (simple console output when an agent is `WAITING_FOR_INPUT`).
-- [ ] Support "Yolo" mode flag in `start`.
+- [ ] Implement status-driven alerts. (**Pending**)
+- [ ] Support "Yolo" mode flag in `start` (**Pending**)
 
 ## Milestone 7: Advanced Template Management
 **Goal**: Facilitate easy customization of agent personas.
 
-- [ ] Implement `gswarm templates` subcommands.
+- [ ] Implement `gswarm templates` subcommands (**Pending**)
     - [ ] `list`, `create`, `delete`.
-- [ ] Implement Extension management.
+- [ ] Implement Extension management (**Pending**)
     - [ ] `extensions install` (modifies `settings.json` in the template).

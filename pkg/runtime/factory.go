@@ -3,15 +3,33 @@ package runtime
 import (
 	"os"
 	"os/exec"
+
+	"github.com/ptone/gswarm/pkg/config"
 )
 
 func GetRuntime() Runtime {
 	sandbox := os.Getenv("GEMINI_SANDBOX")
+	
+	if sandbox == "" {
+		if settings, err := config.GetGeminiSettings(); err == nil {
+			switch v := settings.Tools.Sandbox.(type) {
+			case string:
+				sandbox = v
+			case bool:
+				if v {
+					sandbox = "true"
+				}
+			}
+		}
+	}
+
 	switch sandbox {
 	case "container":
 		return NewAppleContainerRuntime()
 	case "docker":
 		return NewDockerRuntime()
+	case "true":
+		// Fall through to auto-detection
 	}
 
 	// Auto-detection: check for available runtimes
