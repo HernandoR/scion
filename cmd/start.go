@@ -197,9 +197,10 @@ form the task prompt, which is passed to the gemini command.`,
 				fmt.Sprintf("GEMINI_AGENT_NAME=%s", agentName),
 			},
 			Labels: map[string]string{
-				"scion.agent": "true",
-				"scion.name":  agentName,
-				"scion.grove": groveName,
+				"scion.agent":      "true",
+				"scion.name":       agentName,
+				"scion.grove":      groveName,
+				"scion.grove_path": projectDir,
 			},
 		}
 

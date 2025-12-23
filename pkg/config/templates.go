@@ -13,8 +13,9 @@ type Template struct {
 }
 
 type AgentConfig struct {
-	Grove string `json:"grove"`
-	Name  string `json:"name"`
+	Grove  string `json:"grove"`
+	Name   string `json:"name"`
+	Status string `json:"status,omitempty"`
 }
 
 type ScionConfig struct {

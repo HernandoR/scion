@@ -192,11 +192,12 @@ func (r *AppleContainerRuntime) List(ctx context.Context, labelFilter map[string
 		}
 
 		agents = append(agents, AgentInfo{
-			ID:     c.Configuration.ID,
-			Name:   c.Configuration.Labels["scion.name"],
-			Grove:  c.Configuration.Labels["scion.grove"],
-			Status: c.Status,
-			Image:  c.Configuration.Image.Reference,
+			ID:        c.Configuration.ID,
+			Name:      c.Configuration.Labels["scion.name"],
+			Grove:     c.Configuration.Labels["scion.grove"],
+			GrovePath: c.Configuration.Labels["scion.grove_path"],
+			Status:    c.Status,
+			Image:     c.Configuration.Image.Reference,
 		})
 	}
 

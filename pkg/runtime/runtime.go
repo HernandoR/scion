@@ -7,11 +7,13 @@ import (
 )
 
 type AgentInfo struct {
-	ID     string
-	Name   string
-	Grove  string
-	Status string
-	Image  string
+	ID          string
+	Name        string
+	Grove       string
+	GrovePath   string
+	Status      string // Container status
+	AgentStatus string // Scion agent high-level status
+	Image       string
 }
 
 type RunConfig struct {

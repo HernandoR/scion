@@ -18,10 +18,11 @@ func NewMockRuntime() *MockRuntime {
 func (m *MockRuntime) Run(ctx context.Context, config RunConfig) (string, error) {
 	id := fmt.Sprintf("id-%s", config.Name)
 	m.Agents[id] = AgentInfo{
-		ID:     id,
-		Name:   config.Name,
-		Status: "Running",
-		Image:  config.Image,
+		ID:          id,
+		Name:        config.Name,
+		Status:      "Running",
+		AgentStatus: "IDLE",
+		Image:       config.Image,
 	}
 	return id, nil
 }
