@@ -1,6 +1,6 @@
-# gswarm.json Configuration Reference
+# scion.json Configuration Reference
 
-The `gswarm.json` file is used within templates and agent directories to configure how a Gemini Swarm agent is provisioned and executed.
+The `scion.json` file is used within templates and agent directories to configure how a Scion agent is provisioned and executed.
 
 ## Fields
 
@@ -17,9 +17,9 @@ Whether the agent should run in detached mode by default.
 ### `use_tmux` (boolean)
 *Note: This feature is currently in design/implementation.*
 
-If set to `true`, the agent's main process will be wrapped in a `tmux` session. This enables persistent interactive sessions that can be detached and re-attached using the `gswarm attach` command.
+If set to `true`, the agent's main process will be wrapped in a `tmux` session. This enables persistent interactive sessions that can be detached and re-attached using the `scion attach` command.
 - **Default**: `false`
-- **Details**: When enabled, `gswarm` will attempt to use a version of the configured image with a `:tmux` tag if available.
+- **Details**: When enabled, `scion` will attempt to use a version of the configured image with a `:tmux` tag if available.
 - **Example**: `"use_tmux": true`
 
 ### `model` (string)
@@ -29,4 +29,4 @@ The Gemini model ID to use for the agent.
 - **Example**: `"model": "pro"`
 
 ## Inheritance
-`gswarm` uses a template inheritance system. Configuration fields are merged from the `default` template, then the specified template type, and finally any overrides in the agent's own directory. The last value defined for a field takes precedence.
+`scion` uses a template inheritance system. Configuration fields are merged from the `default` template, then the specified template type, and finally any overrides in the agent's own directory. The last value defined for a field takes precedence.

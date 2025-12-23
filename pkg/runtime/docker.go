@@ -79,7 +79,7 @@ func (r *DockerRuntime) Run(ctx context.Context, config RunConfig) (string, erro
 		args = append(args, "--label", fmt.Sprintf("%s=%s", k, v))
 	}
 	if config.UseTmux {
-		args = append(args, "--label", "gswarm.tmux=true")
+		args = append(args, "--label", "scion.tmux=true")
 	}
 
 	args = append(args, config.Image)
@@ -88,7 +88,7 @@ func (r *DockerRuntime) Run(ctx context.Context, config RunConfig) (string, erro
 		// When using tmux, we pass a single string as the command to new-session.
 		// We must quote the task to ensure it's treated as one argument by the shell inside tmux.
 		geminiCmd := fmt.Sprintf("gemini --yolo --prompt-interactive %q", config.Task)
-		args = append(args, "tmux", "new-session", "-s", "gswarm", geminiCmd)
+		args = append(args, "tmux", "new-session", "-s", "scion", geminiCmd)
 	} else {
 		// When not using tmux, we pass arguments directly to docker run.
 		args = append(args, "gemini", "--yolo", "--prompt-interactive", config.Task)
@@ -188,13 +188,13 @@ func (r *DockerRuntime) GetLogs(ctx context.Context, id string) (string, error) 
 
 func (r *DockerRuntime) Attach(ctx context.Context, id string) error {
 	// Check if the container is using tmux
-	inspectCmd := exec.CommandContext(ctx, r.Command, "inspect", "--format", "{{index .Config.Labels \"gswarm.tmux\"}}", id)
+	inspectCmd := exec.CommandContext(ctx, r.Command, "inspect", "--format", "{{index .Config.Labels \"scion.tmux\"}}", id)
 	out, _ := inspectCmd.Output()
 	useTmux := strings.TrimSpace(string(out)) == "true"
 
 	var cmd *exec.Cmd
 	if useTmux {
-		cmd = exec.Command(r.Command, "exec", "-it", id, "tmux", "attach", "-t", "gswarm")
+		cmd = exec.Command(r.Command, "exec", "-it", id, "tmux", "attach", "-t", "scion")
 	} else {
 		// Using exec.Command instead of exec.CommandContext for attach to allow interactive TTY
 		// though CommandContext should also work if we don't cancel it.

@@ -6,9 +6,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ptone/gswarm/pkg/config"
-	"github.com/ptone/gswarm/pkg/runtime"
-	"github.com/ptone/gswarm/pkg/util"
+	"github.com/ptone/scion/pkg/config"
+	"github.com/ptone/scion/pkg/runtime"
+	"github.com/ptone/scion/pkg/util"
 	"github.com/spf13/cobra"
 )
 

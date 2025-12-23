@@ -14,9 +14,9 @@ import (
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:   "gswarm",
+	Use:   "scion",
 	Short: "A container-based orchestration tool for managing concurrent Gemini CLI agents",
-	Long: `Gemini Swarm (gswarm) is a container-based orchestration tool for managing 
+	Long: `Scion is a container-based orchestration tool for managing 
 concurrent Gemini CLI agents. It enables parallel execution of specialized 
 sub-agents with isolated identities, credentials, and workspaces.`,
 	// Uncomment the following line if your bare application
@@ -38,7 +38,7 @@ func init() {
 	// Cobra supports persistent flags, which, if defined here,
 	// will be global for your application.
 
-	// rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.gswarm.yaml)")
+	// rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.scion.yaml)")
 
 	// Cobra also supports local flags, which will only run
 	// when this action is called directly.

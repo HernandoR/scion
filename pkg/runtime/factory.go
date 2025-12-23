@@ -4,7 +4,7 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/ptone/gswarm/pkg/config"
+	"github.com/ptone/scion/pkg/config"
 )
 
 func GetRuntime() Runtime {

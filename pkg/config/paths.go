@@ -4,15 +4,15 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ptone/gswarm/pkg/util"
+	"github.com/ptone/scion/pkg/util"
 )
 
 const (
-	DotGswarm = ".gswarm"
-	GlobalDir = ".gswarm"
+	DotScion = ".scion"
+	GlobalDir = ".scion"
 )
 
-// GetRepoDir returns the .gswarm directory at the root of the git repo, if it exists.
+// GetRepoDir returns the .scion directory at the root of the git repo, if it exists.
 func GetRepoDir() (string, bool) {
 	if !util.IsGitRepo() {
 		return "", false
@@ -21,7 +21,7 @@ func GetRepoDir() (string, bool) {
 	if err != nil {
 		return "", false
 	}
-	p := filepath.Join(root, DotGswarm)
+	p := filepath.Join(root, DotScion)
 	if info, err := os.Stat(p); err == nil && info.IsDir() {
 		return p, true
 	}
@@ -29,7 +29,7 @@ func GetRepoDir() (string, bool) {
 }
 
 func GetProjectDir() (string, error) {
-	// 1. Check if we are in a repo with a .gswarm dir at the root
+	// 1. Check if we are in a repo with a .scion dir at the root
 	if p, ok := GetRepoDir(); ok {
 		return p, nil
 	}
@@ -39,7 +39,7 @@ func GetProjectDir() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(wd, DotGswarm), nil
+	return filepath.Join(wd, DotScion), nil
 }
 
 func GetGlobalDir() (string, error) {

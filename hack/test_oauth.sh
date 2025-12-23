@@ -28,9 +28,9 @@ EOF
 # 2. Mock oauth_creds.json
 echo '{"access_token": "mock-token", "refresh_token": "mock-refresh"}' > "$GEMINI_DIR/oauth_creds.json"
 
-# Build gswarm
-echo "Building gswarm..."
-go build -o "$TEST_TMP/gswarm" main.go
+# Build scion
+echo "Building scion..."
+go build -o "$TEST_TMP/scion" main.go
 
 echo "=== Testing OAuth Discovery ==="
 
@@ -45,14 +45,14 @@ echo "=== Testing OAuth Discovery ==="
 
 # I'll use a task that is just "hello"
 cd "$TEST_TMP"
-./gswarm start "hello" --name test-oauth-agent > start_output.log 2>&1 || true
+./scion start "hello" --name test-oauth-agent > start_output.log 2>&1 || true
 
 echo "Start output:"
 cat start_output.log
 
 # We can't easily check the container args from here without a real container runtime.
 # But we can check if the agent directory was created and what's in it.
-AGENT_DIR=".gswarm/agents/test-oauth-agent"
+AGENT_DIR=".scion/agents/test-oauth-agent"
 if [ -d "$AGENT_DIR" ]; then
     echo "SUCCESS: Agent directory created."
 else

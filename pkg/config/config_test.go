@@ -8,7 +8,7 @@ import (
 
 func TestDiscoverAuth(t *testing.T) {
 	// Setup a temporary home directory
-	tmpHome, err := os.MkdirTemp("", "gswarm-home-*")
+	tmpHome, err := os.MkdirTemp("", "scion-home-*")
 	if err != nil {
 		t.Fatal(err)
 	}

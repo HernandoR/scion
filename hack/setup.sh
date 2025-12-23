@@ -4,7 +4,7 @@ set -e
 # hack/setup.sh - Setup isolated test environment
 
 REPO_ROOT=$(pwd)
-TEST_DIR="${REPO_ROOT}/../gswarm-qa-temp"
+TEST_DIR="${REPO_ROOT}/../scion-qa-temp"
 
 echo "=== Setting up test environment in ${TEST_DIR} ==="
 
@@ -13,12 +13,12 @@ mkdir -p "${TEST_DIR}"
 
 # git init -q
 
-echo "=== Building gswarm binary ==="
-go build -o "${TEST_DIR}/gswarm" .
+echo "=== Building scion binary ==="
+go build -o "${TEST_DIR}/scion" .
 
 cd "${TEST_DIR}"
-echo "=== Initializing gswarm ==="
-./gswarm init
+echo "=== Initializing scion ==="
+./scion init
 
 echo "=== Setup Complete ==="
-ls -A1 .gswarm
+ls -A1 .scion

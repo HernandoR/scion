@@ -3,7 +3,7 @@ package runtime
 import (
 	"context"
 
-	"github.com/ptone/gswarm/pkg/config"
+	"github.com/ptone/scion/pkg/config"
 )
 
 type AgentInfo struct {

@@ -1,14 +1,14 @@
-# gswarm Implementation Milestones
+# scion Implementation Milestones
 
-This document breaks down the implementation of `gswarm` into independent stages, allowing for iterative development and verification.
+This document breaks down the implementation of `scion` into independent stages, allowing for iterative development and verification.
 
 ## Milestone 1: Project Scaffolding & Configuration
 **Goal**: Establish the basic CLI structure and filesystem management.
 
-- [x] Implement `gswarm init` (**Completed**)
-    - [x] Create `.gswarm/` directory structure in the current repo.
-    - [x] Seed `.gswarm/templates/default` with basic agent structure.
-    - [x] Create global `~/.gswarm/` structure for Playground swarms.
+- [x] Implement `scion init` (**Completed**)
+    - [x] Create `.scion/` directory structure in the current repo.
+    - [x] Seed `.scion/templates/default` with basic agent structure.
+    - [x] Create global `~/.scion/` structure for Playground groves.
 - [x] Implement Template Loading (**Completed**)
     - [x] Logic to find and load templates (Project-local vs. Global).
     - [x] Simple inheritance (custom template merged with `default`).
@@ -27,9 +27,9 @@ This document breaks down the implementation of `gswarm` into independent stages
 ## Milestone 3: Basic Agent Provisioning
 **Goal**: Launch isolated agents without Git Worktree complexity.
 
-- [ ] Implement `gswarm start` (v1) (**In Progress**)
+- [ ] Implement `scion start` (v1) (**In Progress**)
     - [x] Select template.
-    - [x] Copy template to `.gswarm/agents/<name>/home`.
+    - [x] Copy template to `.scion/agents/<name>/home`.
     - [x] Implement Environment & Credential Propagation (API keys, gcloud config). (**Completed**)
     - [x] Launch container with home directory mounted to `/home/gemini`.
 - [x] Implement basic ID management to prevent name collisions (**Completed**)
@@ -40,28 +40,28 @@ This document breaks down the implementation of `gswarm` into independent stages
 
 - [ ] Implement Worktree Manager (**Pending**)
     - [ ] Logic to detect if current project is a git repo.
-    - [ ] Logic to create worktrees in `../.gswarm_worktrees/` if in a git repo.
+    - [ ] Logic to create worktrees in `../.scion_worktrees/` if in a git repo.
     - [ ] Automatic branch creation for the agent.
-- [ ] Update `gswarm start` (v2) (**Pending**)
+- [ ] Update `scion start` (v2) (**Pending**)
     - [ ] Conditionally mount worktree to `/workspace` in the container.
     - [ ] Implement macOS-specific path isolation checks.
-- [ ] Verify two agents can run in the same swarm with different file states (**Pending**)
+- [ ] Verify two agents can run in the same grove with different file states (**Pending**)
 
-## Milestone 5: Swarm Management & Observability
+## Milestone 5: Grove Management & Observability
 **Goal**: Provide visibility into running agents and manage their lifecycle.
 
-- [ ] Implement `gswarm list` (**Pending**)
+- [ ] Implement `scion list` (**Pending**)
     - [ ] Query container runtime for running agents.
     - [ ] Parse and display agent status from `.gemini-status.json`.
-- [ ] Implement `gswarm stop` (**Pending**)
+- [ ] Implement `scion stop` (**Pending**)
     - [ ] Graceful container termination.
     - [ ] Git worktree cleanup.
-- [ ] Implement Playground Swarm support (global context) (**Pending**)
+- [ ] Implement Playground Grove support (global context) (**Pending**)
 
 ## Milestone 6: Interactivity & Human-in-the-Loop
 **Goal**: Support "detached" operation with the ability to intervene.
 
-- [ ] Implement `gswarm attach` (**Pending**)
+- [ ] Implement `scion attach` (**Pending**)
     - [ ] Connect host TTY to the running container's session.
     - [ ] Ensure escape sequences (Ctrl-P, Ctrl-Q) work for detaching.
 - [ ] Implement status-driven alerts. (**Pending**)
@@ -70,7 +70,7 @@ This document breaks down the implementation of `gswarm` into independent stages
 ## Milestone 7: Advanced Template Management
 **Goal**: Facilitate easy customization of agent personas.
 
-- [ ] Implement `gswarm templates` subcommands (**Pending**)
+- [ ] Implement `scion templates` subcommands (**Pending**)
 
     - [ ] `list`, `create`, `delete`.
 

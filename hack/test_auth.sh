@@ -2,7 +2,7 @@
 # hack/test_auth.sh - Verify Auth Discovery
 
 REPO_ROOT=$(pwd)
-TEST_DIR="${REPO_ROOT}/../gswarm-qa-temp"
+TEST_DIR="${REPO_ROOT}/../scion-qa-temp"
 
 # Load the test key
 if [ ! -f "${REPO_ROOT}/TEST_GEMINI_KEY" ]; then
@@ -20,10 +20,10 @@ cd "${TEST_DIR}"
 
 echo "=== Testing Case A: Environment Variable ==="
 export GEMINI_API_KEY="${TEST_KEY}"
-./gswarm start "test auth" --name qa-auth-env
+./scion start "test auth" --name qa-auth-env
 
 # Verify using container list (assuming Apple container on macOS)
-if ./gswarm list | grep -q "qa-auth-env"; then
+if ./scion list | grep -q "qa-auth-env"; then
     echo "Agent qa-auth-env started."
     # Check if env var is in the container list output
     if container list -a --format json | grep -q "GEMINI_API_KEY=${TEST_KEY}"; then
@@ -39,7 +39,7 @@ fi
 
 echo "=== Testing Case B: --no-auth flag ==="
 unset GEMINI_API_KEY
-./gswarm start "test no auth" --name qa-no-auth --no-auth
+./scion start "test no auth" --name qa-no-auth --no-auth
 if container list -a --format json | grep "qa-no-auth" -A 50 | grep -q "GEMINI_API_KEY=${TEST_KEY}"; then
     echo "FAILURE: GEMINI_API_KEY found when --no-auth was used."
     exit 1

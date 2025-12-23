@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ptone/gswarm/pkg/config"
-	"github.com/ptone/gswarm/pkg/runtime"
-	"github.com/ptone/gswarm/pkg/util"
+	"github.com/ptone/scion/pkg/config"
+	"github.com/ptone/scion/pkg/runtime"
+	"github.com/ptone/scion/pkg/util"
 	"github.com/spf13/cobra"
 )
 
@@ -25,7 +25,7 @@ var (
 // startCmd represents the start command
 var startCmd = &cobra.Command{
 	Use:   "start <agent-name> <task...>",
-	Short: "Launch a new gswarm agent",
+	Short: "Launch a new scion agent",
 	Long: `Provision and launch a new isolated Gemini agent to perform a specific task.
 The agent will be created from a template and run in a detached container.
 
@@ -43,9 +43,9 @@ form the task prompt, which is passed to the gemini command.`,
 		repoDir, hasRepoConfig := config.GetRepoDir()
 
 		if hasRepoConfig {
-			// If .gswarm exists at repo root, verify .gitignore
-			if !util.IsIgnored(".gswarm/agents/") {
-				return fmt.Errorf("security error: '.gswarm/agents/' must be in .gitignore when using a project-local swarm")
+			// If .scion exists at repo root, verify .gitignore
+			if !util.IsIgnored(".scion/agents/") {
+				return fmt.Errorf("security error: '.scion/agents/' must be in .gitignore when using a project-local grove")
 			}
 			agentsDir = filepath.Join(repoDir, "agents")
 		} else {
@@ -93,7 +93,7 @@ form the task prompt, which is passed to the gemini command.`,
 				return fmt.Errorf("failed to copy template %s: %w", tpl.Name, err)
 			}
 
-			// Load gswarm.json from this template to see if it specifies an image
+			// Load scion.json from this template to see if it specifies an image
 			tplCfg, err := tpl.LoadConfig()
 			if err == nil && tplCfg.Image != "" {
 				resolvedImage = tplCfg.Image
@@ -175,8 +175,8 @@ form the task prompt, which is passed to the gemini command.`,
 				fmt.Sprintf("GEMINI_AGENT_NAME=%s", agentName),
 			},
 			Labels: map[string]string{
-				"gswarm.agent": "true",
-				"gswarm.name":  agentName,
+				"scion.agent": "true",
+				"scion.name":  agentName,
 			},
 		}
 

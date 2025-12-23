@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ptone/gswarm/pkg/util"
+	"github.com/ptone/scion/pkg/util"
 )
 
 type AppleContainerRuntime struct {
@@ -101,7 +101,7 @@ func (r *AppleContainerRuntime) Run(ctx context.Context, config RunConfig) (stri
 		args = append(args, "--label", fmt.Sprintf("%s=%s", k, v))
 	}
 	if config.UseTmux {
-		args = append(args, "--label", "gswarm.tmux=true")
+		args = append(args, "--label", "scion.tmux=true")
 	}
 
 	args = append(args, config.Image)
@@ -110,13 +110,13 @@ func (r *AppleContainerRuntime) Run(ctx context.Context, config RunConfig) (stri
 		// When using tmux, we pass a single string as the command to new-session.
 		// We must quote the task to ensure it's treated as one argument by the shell inside tmux.
 		geminiCmd := fmt.Sprintf("gemini --yolo --prompt-interactive %q", config.Task)
-		args = append(args, "tmux", "new-session", "-s", "gswarm", geminiCmd)
+		args = append(args, "tmux", "new-session", "-s", "scion", geminiCmd)
 	} else {
 		// When not using tmux, we pass arguments directly to container run.
 		args = append(args, "gemini", "--yolo", "--prompt-interactive", config.Task)
 	}
 
-	if os.Getenv("GSWARM_DEBUG") != "" {
+	if os.Getenv("SCION_DEBUG") != "" {
 		fmt.Fprintf(os.Stderr, "Debug: %s %s\n", r.Command, strings.Join(args, " "))
 	}
 	cmd := exec.CommandContext(ctx, r.Command, args...)
@@ -189,7 +189,7 @@ func (r *AppleContainerRuntime) List(ctx context.Context, labelFilter map[string
 
 		agents = append(agents, AgentInfo{
 			ID:     c.Configuration.ID,
-			Name:   c.Configuration.Labels["gswarm.name"],
+			Name:   c.Configuration.Labels["scion.name"],
 			Status: c.Status,
 			Image:  c.Configuration.Image.Reference,
 		})
@@ -232,7 +232,7 @@ func (r *AppleContainerRuntime) Attach(ctx context.Context, id string) error {
 		return fmt.Errorf("apple 'container' runtime requires tmux to attach to an interactive session. Please ensure the agent was started with tmux support")
 	}
 
-	args := []string{"exec", "-it", id, "tmux", "attach", "-t", "gswarm"}
+	args := []string{"exec", "-it", id, "tmux", "attach", "-t", "scion"}
 
 	cmd := exec.Command(r.Command, args...)
 	cmd.Stdin = os.Stdin

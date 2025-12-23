@@ -1,5 +1,5 @@
-# gswarm ignore
-.gswarm/agents/
-.gswarm_worktrees/
-gswarm
+# scion ignore
+.scion/agents/
+.scion_worktrees/
+scion
 TEST_GEMINI_KEY

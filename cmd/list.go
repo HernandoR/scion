@@ -6,18 +6,18 @@ import (
 	"os"
 	"text/tabwriter"
 
-	"github.com/ptone/gswarm/pkg/runtime"
+	"github.com/ptone/scion/pkg/runtime"
 	"github.com/spf13/cobra"
 )
 
 // listCmd represents the list command
 var listCmd = &cobra.Command{
 	Use:   "list",
-	Short: "List running gswarm agents",
+	Short: "List running scion agents",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		rt := runtime.GetRuntime()
 		agents, err := rt.List(context.Background(), map[string]string{
-			"gswarm.agent": "true",
+			"scion.agent": "true",
 		})
 		if err != nil {
 			return err

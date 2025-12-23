@@ -1,10 +1,10 @@
-# Gemini Swarm (gswarm)
+# Scion
 
 A container-based orchestration tool for managing concurrent Gemini CLI agents.
 
 ## Overview
 
-`gswarm` enables parallel execution of specialized Gemini CLI agents with isolated identities, credentials, and workspaces. It follows a Manager-Worker architecture where the host-side CLI orchestrates the lifecycle of isolated containers acting as independent agents.
+`scion` enables parallel execution of specialized Gemini CLI agents with isolated identities, credentials, and workspaces. It follows a Manager-Worker architecture where the host-side CLI orchestrates the lifecycle of isolated containers acting as independent agents.
 
 ## Key Features
 
@@ -19,25 +19,25 @@ A container-based orchestration tool for managing concurrent Gemini CLI agents.
 ### Initialize
 
 ```bash
-gswarm init
+scion init
 ```
 
 ### Start an Agent
 
 ```bash
-gswarm start "Analyze this codebase" --name auditor --type security-auditor
+scion start "Analyze this codebase" --name auditor --type security-auditor
 ```
 
 ### List Agents
 
 ```bash
-gswarm list
+scion list
 ```
 
 ### Attach to an Agent
 
 ```bash
-gswarm attach auditor
+scion attach auditor
 ```
 
 ## License

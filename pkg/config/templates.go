@@ -12,31 +12,31 @@ type Template struct {
 	Path string
 }
 
-type GswarmConfig struct {
+type ScionConfig struct {
 	Image    string `json:"image"`
 	Detached *bool  `json:"detached"`
 	UseTmux  bool   `json:"use_tmux"`
 	Model    string `json:"model"`
 }
 
-func (c *GswarmConfig) IsDetached() bool {
+func (c *ScionConfig) IsDetached() bool {
 	if c.Detached == nil {
 		return true
 	}
 	return *c.Detached
 }
 
-func (t *Template) LoadConfig() (*GswarmConfig, error) {
-	path := filepath.Join(t.Path, "gswarm.json")
+func (t *Template) LoadConfig() (*ScionConfig, error) {
+	path := filepath.Join(t.Path, "scion.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return &GswarmConfig{}, nil
+			return &ScionConfig{}, nil
 		}
 		return nil, err
 	}
 
-	var cfg GswarmConfig
+	var cfg ScionConfig
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return nil, err
 	}

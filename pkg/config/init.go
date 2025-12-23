@@ -31,21 +31,21 @@ const DefaultSettingsJSON = `{
 }
 `
 
-const DefaultSystemPrompt = `# Gemini Swarm Agent
-You are a specialized agent working within a Gemini Swarm.
+const DefaultSystemPrompt = `# Scion Agent
+You are a specialized agent working within a Scion.
 `
 
-const DefaultGswarmJSON = `{
+const DefaultScionJSON = `{
   "image": "gemini-cli-sandbox",
   "use_tmux": true,
   "model": "flash"
 }
 `
 
-const DefaultGeminiMD = `## Swarm Context
+const DefaultGeminiMD = `## Scion Context
 `
 
-const DefaultBashrc = `# gswarm agent bashrc
+const DefaultBashrc = `# scion agent bashrc
 alias g="gemini"
 `
 
@@ -80,7 +80,7 @@ func InitProject() error {
 		path    string
 		content string
 	}{
-		{filepath.Join(defaultTemplateDir, "gswarm.json"), DefaultGswarmJSON},
+		{filepath.Join(defaultTemplateDir, "scion.json"), DefaultScionJSON},
 		{filepath.Join(defaultTemplateDir, ".gemini", "settings.json"), DefaultSettingsJSON},
 		{filepath.Join(defaultTemplateDir, ".gemini", "system_prompt.md"), DefaultSystemPrompt},
 		{filepath.Join(defaultTemplateDir, "gemini.md"), DefaultGeminiMD},
@@ -136,7 +136,7 @@ func InitGlobal() error {
 		path    string
 		content string
 	}{
-		{filepath.Join(defaultTemplateDir, "gswarm.json"), DefaultGswarmJSON},
+		{filepath.Join(defaultTemplateDir, "scion.json"), DefaultScionJSON},
 		{filepath.Join(defaultTemplateDir, ".gemini", "settings.json"), DefaultSettingsJSON},
 		{filepath.Join(defaultTemplateDir, ".gemini", "system_prompt.md"), DefaultSystemPrompt},
 		{filepath.Join(defaultTemplateDir, ".gemini", "gemini.md"), DefaultGeminiMD},
