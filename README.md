@@ -1,10 +1,10 @@
 # Scion
 
-A container-based orchestration tool for managing concurrent Gemini CLI agents.
+A container-based orchestration tool for managing concurrent LLM-based code agents.
 
 ## Overview
 
-`scion` enables parallel execution of specialized Gemini CLI agents with isolated identities, credentials, and workspaces. It follows a Manager-Worker architecture where the host-side CLI orchestrates the lifecycle of isolated containers acting as independent agents.
+`scion` enables parallel execution of specialized code agents with isolated identities, credentials, and workspaces. It follows a Manager-Worker architecture where the host-side CLI orchestrates the lifecycle of isolated containers acting as independent agents.
 
 ## Key Features
 

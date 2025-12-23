@@ -27,11 +27,11 @@ var (
 var startCmd = &cobra.Command{
 	Use:   "start <agent-name> <task...>",
 	Short: "Launch a new scion agent",
-	Long: `Provision and launch a new isolated Gemini agent to perform a specific task.
+	Long: `Provision and launch a new isolated LLM agent to perform a specific task.
 The agent will be created from a template and run in a detached container.
 
 The agent-name is required as the first argument. All subsequent arguments 
-form the task prompt, which is passed to the gemini command.`,
+form the task prompt.`,
 	Args: cobra.MinimumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		agentName = args[0]

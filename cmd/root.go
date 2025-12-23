@@ -19,9 +19,9 @@ var (
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "scion",
-	Short: "A container-based orchestration tool for managing concurrent Gemini CLI agents",
+	Short: "A container-based orchestration tool for managing concurrent LLM agents",
 	Long: `Scion is a container-based orchestration tool for managing 
-concurrent Gemini CLI agents. It enables parallel execution of specialized 
+concurrent LLM agents. It enables parallel execution of specialized 
 sub-agents with isolated identities, credentials, and workspaces.`,
 }
 
