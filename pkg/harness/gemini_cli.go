@@ -80,8 +80,11 @@ func (g *GeminiCLI) GetEnv(agentName string, agentHome string, unixUsername stri
 	env := make(map[string]string)
 
 	env["GEMINI_AGENT_NAME"] = agentName
-	if g.HasSystemPrompt(agentHome) {
-		env["GEMINI_SYSTEM_MD"] = fmt.Sprintf("%s/%s/system_prompt.md", util.GetHomeDir(unixUsername), g.DefaultConfigDir())
+	
+	if relPath := g.getSystemPromptRelPath(agentHome); relPath != "" {
+		fullPath := fmt.Sprintf("%s/%s", util.GetHomeDir(unixUsername), relPath)
+		env["GEMINI_SYSTEM_MD"] = fullPath
+		env["GEMINI_SYSTEM_PROMPT"] = fullPath
 	}
 
 	if auth.GeminiAPIKey != "" {
@@ -200,11 +203,33 @@ func (g *GeminiCLI) DefaultConfigDir() string {
 }
 
 func (g *GeminiCLI) HasSystemPrompt(agentHome string) bool {
+	return g.getSystemPromptRelPath(agentHome) != ""
+}
+
+func (g *GeminiCLI) getSystemPromptRelPath(agentHome string) string {
 	if agentHome == "" {
-		return false
+		return ""
 	}
-	promptPath := filepath.Join(agentHome, g.DefaultConfigDir(), "system_prompt.md")
-	data, err := os.ReadFile(promptPath)
+
+	// 1. Check .gemini/system_prompt.md (New Standard)
+	relPath := filepath.Join(g.DefaultConfigDir(), "system_prompt.md")
+	fullPath := filepath.Join(agentHome, relPath)
+	if g.isValidPromptFile(fullPath) {
+		return relPath
+	}
+
+	// 2. Check system_prompt.md (Legacy / Root)
+	relPath = "system_prompt.md"
+	fullPath = filepath.Join(agentHome, relPath)
+	if g.isValidPromptFile(fullPath) {
+		return relPath
+	}
+
+	return ""
+}
+
+func (g *GeminiCLI) isValidPromptFile(path string) bool {
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return false
 	}
