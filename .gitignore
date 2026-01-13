@@ -6,3 +6,6 @@ scion-agent
 
 # secrets
 TEST_GEMINI_KEY
+
+# agent scratch space
+.scratch/
