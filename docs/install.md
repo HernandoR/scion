@@ -26,6 +26,16 @@ Scion uses `git worktree` to manage agent workspaces.
 - Ensure `git` is installed and available in your PATH.
 - Because Scion uses a new feature for relative path worktrees ensure that `git --version` >= 2.48
 
+For Ubuntu you can install the latest version with
+
+```bash
+add-apt-repository ppa:git-core/ppa
+
+apt update; apt install git
+```
+
+For Debian you may need to build from source, see the [git site](https://git-scm.com/install/source), or see the Dockerfile in this repo for the base image.
+
 ---
 
 ## Scion Installation
