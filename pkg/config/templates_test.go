@@ -345,3 +345,51 @@ func TestCloneTemplate(t *testing.T) {
 		t.Error("expected error when cloning to existing destination, got nil")
 	}
 }
+
+func TestImageFieldLoadingAndMerging(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "scion-test-image-field")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// 1. Test LoadConfig
+	configContent := `{
+		"image": "custom-image:v1",
+		"harness": "test-harness"
+	}`
+	configPath := filepath.Join(tmpDir, "scion-agent.json")
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("failed to write config file: %v", err)
+	}
+
+	tpl := &Template{Path: tmpDir}
+	cfg, err := tpl.LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig failed: %v", err)
+	}
+
+	if cfg.Image != "custom-image:v1" {
+		t.Errorf("expected Image to be 'custom-image:v1', got '%s'", cfg.Image)
+	}
+
+	// 2. Test MergeScionConfig
+	base := &api.ScionConfig{
+		Image: "base-image:v1",
+	}
+	override := &api.ScionConfig{
+		Image: "override-image:v1",
+	}
+
+	result := MergeScionConfig(base, override)
+	if result.Image != "override-image:v1" {
+		t.Errorf("MergeScionConfig: expected 'override-image:v1', got '%s'", result.Image)
+	}
+
+	// Test merge with empty override
+	overrideEmpty := &api.ScionConfig{}
+	resultEmpty := MergeScionConfig(base, overrideEmpty)
+	if resultEmpty.Image != "base-image:v1" {
+		t.Errorf("MergeScionConfig (empty override): expected 'base-image:v1', got '%s'", resultEmpty.Image)
+	}
+}

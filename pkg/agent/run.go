@@ -123,6 +123,10 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 		warnings = append(warnings, "Warning: Apple container runtime does not support 'attach' without tmux. Sessions will be non-interactive after start.")
 	}
 
+	if finalScionCfg != nil && finalScionCfg.Image != "" {
+		resolvedImage = finalScionCfg.Image
+	}
+
 	// CLI Overrides
 	if opts.Image != "" {
 		resolvedImage = opts.Image

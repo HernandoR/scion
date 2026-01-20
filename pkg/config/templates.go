@@ -303,6 +303,9 @@ func MergeScionConfig(base, override *api.ScionConfig) *api.ScionConfig {
 			result.Gemini.AuthSelectedType = override.Gemini.AuthSelectedType
 		}
 	}
+	if override.Image != "" {
+		result.Image = override.Image
+	}
 	if override.Info != nil {
 		if result.Info == nil {
 			infoCopy := *override.Info

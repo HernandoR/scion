@@ -43,6 +43,7 @@ type ScionConfig struct {
 	Model       string            `json:"model,omitempty"`
 	Kubernetes  *KubernetesConfig `json:"kubernetes,omitempty"`
 	Gemini      *GeminiConfig     `json:"gemini,omitempty"`
+	Image       string            `json:"image,omitempty"`
 
 	// Info contains persisted metadata about the agent
 	Info *AgentInfo `json:"-"`
