@@ -146,3 +146,9 @@ ENV LC_ALL=C.UTF-8
 
 USER scion
 
+# Set sciontool as the container entrypoint (PID 1)
+# The -- separator ensures everything after it is treated as the child command
+ENTRYPOINT ["sciontool", "init", "--"]
+
+# Default command (can be overridden at runtime)
+CMD ["bash"]
