@@ -81,11 +81,17 @@ type HubClientConfig struct {
 	HostToken string `json:"hostToken,omitempty" yaml:"hostToken,omitempty" koanf:"hostToken"`
 }
 
+type CLIConfig struct {
+	// AutoHelp indicates whether to print usage help on every error.
+	AutoHelp *bool `json:"autohelp,omitempty" yaml:"autohelp,omitempty" koanf:"autohelp"`
+}
+
 type Settings struct {
 	ActiveProfile   string                   `json:"active_profile" yaml:"active_profile" koanf:"active_profile"`
 	DefaultTemplate string                   `json:"default_template,omitempty" yaml:"default_template,omitempty" koanf:"default_template"`
 	Bucket          *BucketConfig            `json:"bucket,omitempty" yaml:"bucket,omitempty" koanf:"bucket"`
 	Hub             *HubClientConfig         `json:"hub,omitempty" yaml:"hub,omitempty" koanf:"hub"`
+	CLI             *CLIConfig               `json:"cli,omitempty" yaml:"cli,omitempty" koanf:"cli"`
 	Runtimes        map[string]RuntimeConfig `json:"runtimes" yaml:"runtimes" koanf:"runtimes"`
 	Harnesses       map[string]HarnessConfig `json:"harnesses" yaml:"harnesses" koanf:"harnesses"`
 	Profiles        map[string]ProfileConfig `json:"profiles" yaml:"profiles" koanf:"profiles"`
@@ -255,6 +261,15 @@ func MergeSettings(base *Settings, data []byte) error {
 		if override.Bucket.Prefix != "" {
 			pf, _ := util.ExpandEnv(override.Bucket.Prefix)
 			base.Bucket.Prefix = pf
+		}
+	}
+
+	if override.CLI != nil {
+		if base.CLI == nil {
+			base.CLI = &CLIConfig{}
+		}
+		if override.CLI.AutoHelp != nil {
+			base.CLI.AutoHelp = override.CLI.AutoHelp
 		}
 	}
 
@@ -511,6 +526,12 @@ func UpdateSetting(grovePath string, key string, value string, global bool) erro
 		}
 		enabled := value == "true"
 		current.Hub.Enabled = &enabled
+	case "cli.autohelp":
+		if current.CLI == nil {
+			current.CLI = &CLIConfig{}
+		}
+		autohelp := value == "true"
+		current.CLI.AutoHelp = &autohelp
 	default:
 		return fmt.Errorf("unknown or complex setting key: %s (manual edit recommended for registries)", key)
 	}
@@ -589,6 +610,14 @@ func GetSettingValue(s *Settings, key string) (string, error) {
 			return "false", nil
 		}
 		return "", nil
+	case "cli.autohelp":
+		if s.CLI != nil && s.CLI.AutoHelp != nil {
+			if *s.CLI.AutoHelp {
+				return "true", nil
+			}
+			return "false", nil
+		}
+		return "", nil
 	}
 	return "", fmt.Errorf("unknown or complex setting key: %s", key)
 }
@@ -621,6 +650,15 @@ func GetSettingsMap(s *Settings) map[string]string {
 		m["hub.hostId"] = s.Hub.HostID
 		if s.Hub.HostToken != "" {
 			m["hub.hostToken"] = "********" // Mask host token
+		}
+	}
+	if s.CLI != nil {
+		if s.CLI.AutoHelp != nil {
+			if *s.CLI.AutoHelp {
+				m["cli.autohelp"] = "true"
+			} else {
+				m["cli.autohelp"] = "false"
+			}
 		}
 	}
 	return m

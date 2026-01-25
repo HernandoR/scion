@@ -6,6 +6,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/ptone/scion-agent/pkg/apiclient"
 	"github.com/ptone/scion-agent/pkg/config"
@@ -20,6 +21,7 @@ var (
 	outputFormat string
 	hubEndpoint  string // Hub API endpoint override
 	noHub        bool   // Disable Hub integration for this invocation
+	autoHelp     = true // Default to true, updated in PersistentPreRunE
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -42,6 +44,12 @@ sub-agents with isolated identities, credentials, and workspaces.`,
 			}
 		}
 
+		// Load settings to get cli.autohelp
+		settings, err := config.LoadSettings(grovePath)
+		if err == nil && settings.CLI != nil && settings.CLI.AutoHelp != nil {
+			autoHelp = *settings.CLI.AutoHelp
+		}
+
 		if outputFormat != "" {
 			if outputFormat != "json" && outputFormat != "plain" {
 				return fmt.Errorf("invalid format: %s (allowed: json, plain)", outputFormat)
@@ -62,10 +70,31 @@ sub-agents with isolated identities, credentials, and workspaces.`,
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
+	// Early settings load to determine autoHelp behavior
+	// This handles cases where ExecuteC fails during flag parsing or unknown commands
+	tempGrovePath := ""
+	for i := 1; i < len(os.Args); i++ {
+		arg := os.Args[i]
+		if arg == "--grove" || arg == "-g" {
+			if i+1 < len(os.Args) {
+				tempGrovePath = os.Args[i+1]
+				i++
+			}
+		} else if strings.HasPrefix(arg, "--grove=") {
+			tempGrovePath = strings.TrimPrefix(arg, "--grove=")
+		} else if arg == "--global" {
+			tempGrovePath = "global"
+		}
+	}
+	settings, _ := config.LoadSettings(tempGrovePath)
+	if settings != nil && settings.CLI != nil && settings.CLI.AutoHelp != nil {
+		autoHelp = *settings.CLI.AutoHelp
+	}
+
 	cmd, err := rootCmd.ExecuteC()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "\n%s%sError: %v%s\n\n", util.BgRed, util.Black, err, util.Reset)
-		if cmd != nil {
+		if cmd != nil && autoHelp {
 			cmd.Usage()
 		}
 		os.Exit(1)

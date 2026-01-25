@@ -11,6 +11,10 @@ active_profile: local
 # Env: SCION_DEFAULT_TEMPLATE
 default_template: gemini
 
+# CLI behavior settings
+cli:
+  autohelp: true
+
 # Bucket configuration for cloud storage (optional)
 # bucket:
 #   provider: ""      # Env: SCION_BUCKET_PROVIDER

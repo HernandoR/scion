@@ -126,11 +126,15 @@ These settings apply globally or define defaults.
 | :--- | :--- | :--- |
 | `active_profile` | string | The profile to use by default. Can be overridden with `--profile`. |
 | `default_template` | string | The default template to use when creating new agents if none is specified. |
+| `cli.autohelp` | boolean | (Optional) Whether to print usage help on every error. Default: `true`. |
 
 **Example:**
 ```json
 "active_profile": "local",
-"default_template": "gemini"
+"default_template": "gemini",
+"cli": {
+  "autohelp": false
+}
 ```
 
 ## Environment Variable Substitution
