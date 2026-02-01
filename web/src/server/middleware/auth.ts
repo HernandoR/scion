@@ -57,6 +57,7 @@ function isProtectedRoute(url: string): boolean {
     '/healthz',
     '/readyz',
     '/login',
+    '/unauthorized',
     '/auth/login',
     '/auth/callback',
     '/auth/error',

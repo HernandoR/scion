@@ -78,7 +78,7 @@ router.get('(.*)', async (ctx: Context) => {
  * Check if a URL matches a known route
  */
 function isKnownRoute(url: string): boolean {
-  const knownRoutes = ['/', '/groves', '/agents', '/settings', '/login'];
+  const knownRoutes = ['/', '/groves', '/agents', '/settings', '/login', '/unauthorized'];
 
   // Exact match
   if (knownRoutes.includes(url)) {

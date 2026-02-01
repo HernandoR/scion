@@ -31,6 +31,7 @@ import '../../components/pages/agents.js';
 import '../../components/pages/agent-detail.js';
 import '../../components/pages/not-found.js';
 import '../../components/pages/login.js';
+import '../../components/pages/unauthorized.js';
 
 export interface RenderContext {
   /** Current URL path */
@@ -76,6 +77,23 @@ export async function renderPage(ctx: RenderContext): Promise<string> {
 
     return getHtmlTemplate({
       title: 'Sign In',
+      content: componentHtml,
+      initialData,
+      scripts: ['/assets/main.js'],
+      styles: ['/assets/main.css'],
+    });
+  }
+
+  // Unauthorized page is rendered without the app shell
+  if (url === '/unauthorized' || url.startsWith('/unauthorized?')) {
+    const unauthorizedTemplate = html`
+      <scion-page-unauthorized .pageData=${initialData}></scion-page-unauthorized>
+    `;
+
+    const componentHtml = await collectResult(render(unauthorizedTemplate));
+
+    return getHtmlTemplate({
+      title: 'Access Denied',
       content: componentHtml,
       initialData,
       scripts: ['/assets/main.js'],

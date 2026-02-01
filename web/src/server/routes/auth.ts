@@ -242,6 +242,21 @@ export function createAuthRouter(config: AppConfig): Router {
           status: hubTokenResponse.status,
           error: errorText.substring(0, 200),
         });
+
+        // Try to parse the error response to detect unauthorized_domain
+        try {
+          const errorData = JSON.parse(errorText) as {
+            error?: { code?: string; message?: string };
+          };
+          if (errorData.error?.code === 'unauthorized_domain') {
+            // Extract email from error details if available, or use a generic redirect
+            ctx.redirect('/unauthorized');
+            return;
+          }
+        } catch {
+          // If JSON parsing fails, continue with generic error
+        }
+
         throw new Error(`Hub authentication failed: ${hubTokenResponse.statusText}`);
       }
 
@@ -268,7 +283,7 @@ export function createAuthRouter(config: AppConfig): Router {
       // Check if user's email domain is authorized (secondary check, Hub might already do this)
       if (!isEmailAuthorized(user.email, config.auth.authorizedDomains)) {
         authRoutesDebug(`User email domain not authorized`, { email: user.email });
-        ctx.redirect('/auth/error?message=Your+email+domain+is+not+authorized');
+        ctx.redirect(`/unauthorized?email=${encodeURIComponent(user.email)}`);
         return;
       }
 

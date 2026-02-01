@@ -215,6 +215,7 @@ export function getPageTitle(path: string): string {
     '/groves': 'Groves',
     '/agents': 'Agents',
     '/settings': 'Settings',
+    '/unauthorized': 'Access Denied',
   };
 
   // Check for exact match
