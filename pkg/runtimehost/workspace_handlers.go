@@ -1,0 +1,418 @@
+package runtimehost
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io/fs"
+	"log"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/ptone/scion-agent/pkg/gcp"
+	"github.com/ptone/scion-agent/pkg/storage"
+	"github.com/ptone/scion-agent/pkg/transfer"
+)
+
+// ============================================================================
+// Workspace Request/Response Types
+// ============================================================================
+
+// WorkspaceUploadRequest is the request body for uploading workspace to GCS.
+type WorkspaceUploadRequest struct {
+	// AgentID is the identifier of the agent whose workspace to upload.
+	AgentID string `json:"agentId"`
+	// StoragePath is the path within the bucket where files should be uploaded.
+	// Format: "workspaces/{groveId}/{agentId}"
+	StoragePath string `json:"storagePath"`
+	// Bucket is the GCS bucket name for storage.
+	Bucket string `json:"bucket,omitempty"`
+	// ExcludePatterns are glob patterns to exclude from the upload.
+	ExcludePatterns []string `json:"excludePatterns,omitempty"`
+}
+
+// WorkspaceUploadResponse is the response after uploading workspace to GCS.
+type WorkspaceUploadResponse struct {
+	// Manifest contains the list of files uploaded with their hashes.
+	Manifest *transfer.Manifest `json:"manifest"`
+	// UploadedFiles is the number of files uploaded.
+	UploadedFiles int `json:"uploadedFiles"`
+	// UploadedBytes is the total size of uploaded files.
+	UploadedBytes int64 `json:"uploadedBytes"`
+}
+
+// WorkspaceApplyRequest is the request body for applying workspace from GCS.
+type WorkspaceApplyRequest struct {
+	// AgentID is the identifier of the agent whose workspace to update.
+	AgentID string `json:"agentId"`
+	// StoragePath is the path within the bucket where files are stored.
+	// Format: "workspaces/{groveId}/{agentId}"
+	StoragePath string `json:"storagePath"`
+	// Bucket is the GCS bucket name for storage.
+	Bucket string `json:"bucket,omitempty"`
+	// Manifest contains the list of files to apply with their modes.
+	Manifest *transfer.Manifest `json:"manifest,omitempty"`
+}
+
+// WorkspaceApplyResponse is the response after applying workspace from GCS.
+type WorkspaceApplyResponse struct {
+	// Applied indicates whether the workspace was successfully applied.
+	Applied bool `json:"applied"`
+	// FilesApplied is the number of files applied.
+	FilesApplied int `json:"filesApplied"`
+	// BytesTransferred is the total size of transferred files.
+	BytesTransferred int64 `json:"bytesTransferred"`
+}
+
+// ============================================================================
+// Workspace Handlers
+// ============================================================================
+
+// handleWorkspaceUpload handles POST /api/v1/workspace/upload
+// It uploads the agent's workspace directory to GCS.
+func (s *Server) handleWorkspaceUpload(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		MethodNotAllowed(w)
+		return
+	}
+
+	ctx := r.Context()
+
+	var req WorkspaceUploadRequest
+	if err := readJSON(r, &req); err != nil {
+		BadRequest(w, "Invalid request body: "+err.Error())
+		return
+	}
+
+	// Validate required fields
+	if req.AgentID == "" {
+		ValidationError(w, "agentId is required", nil)
+		return
+	}
+	if req.StoragePath == "" {
+		ValidationError(w, "storagePath is required", nil)
+		return
+	}
+
+	// Get bucket from request or config
+	bucket := req.Bucket
+	if bucket == "" {
+		bucket = s.config.StorageBucket
+	}
+	if bucket == "" {
+		ValidationError(w, "bucket is required (not configured on host)", nil)
+		return
+	}
+
+	if s.config.Debug {
+		log.Printf("[RuntimeHost] Workspace upload requested for agent %s to %s/%s",
+			req.AgentID, bucket, req.StoragePath)
+	}
+
+	// Get the container's workspace path
+	workspacePath, err := s.getAgentWorkspacePath(ctx, req.AgentID)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			NotFound(w, "Agent")
+			return
+		}
+		RuntimeError(w, "Failed to resolve workspace path: "+err.Error())
+		return
+	}
+
+	// Build manifest from container workspace
+	manifest, err := s.buildWorkspaceManifest(workspacePath, req.ExcludePatterns)
+	if err != nil {
+		RuntimeError(w, "Failed to build workspace manifest: "+err.Error())
+		return
+	}
+
+	// Sync workspace to GCS using rclone
+	filesPath := req.StoragePath + "/files"
+	if err := gcp.SyncToGCS(ctx, workspacePath, bucket, filesPath); err != nil {
+		RuntimeError(w, "Failed to upload workspace to GCS: "+err.Error())
+		return
+	}
+
+	// Upload the manifest
+	if err := s.uploadManifest(ctx, bucket, req.StoragePath, manifest); err != nil {
+		RuntimeError(w, "Failed to upload manifest: "+err.Error())
+		return
+	}
+
+	// Calculate response stats
+	var totalBytes int64
+	for _, f := range manifest.Files {
+		totalBytes += f.Size
+	}
+
+	resp := WorkspaceUploadResponse{
+		Manifest:      manifest,
+		UploadedFiles: len(manifest.Files),
+		UploadedBytes: totalBytes,
+	}
+
+	if s.config.Debug {
+		log.Printf("[RuntimeHost] Workspace upload complete: %d files, %d bytes",
+			resp.UploadedFiles, resp.UploadedBytes)
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// handleWorkspaceApply handles POST /api/v1/workspace/apply
+// It downloads files from GCS and applies them to the agent's workspace.
+func (s *Server) handleWorkspaceApply(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		MethodNotAllowed(w)
+		return
+	}
+
+	ctx := r.Context()
+
+	var req WorkspaceApplyRequest
+	if err := readJSON(r, &req); err != nil {
+		BadRequest(w, "Invalid request body: "+err.Error())
+		return
+	}
+
+	// Validate required fields
+	if req.AgentID == "" {
+		ValidationError(w, "agentId is required", nil)
+		return
+	}
+	if req.StoragePath == "" {
+		ValidationError(w, "storagePath is required", nil)
+		return
+	}
+
+	// Get bucket from request or config
+	bucket := req.Bucket
+	if bucket == "" {
+		bucket = s.config.StorageBucket
+	}
+	if bucket == "" {
+		ValidationError(w, "bucket is required (not configured on host)", nil)
+		return
+	}
+
+	if s.config.Debug {
+		log.Printf("[RuntimeHost] Workspace apply requested for agent %s from %s/%s",
+			req.AgentID, bucket, req.StoragePath)
+	}
+
+	// Get the container's workspace path
+	workspacePath, err := s.getAgentWorkspacePath(ctx, req.AgentID)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			NotFound(w, "Agent")
+			return
+		}
+		RuntimeError(w, "Failed to resolve workspace path: "+err.Error())
+		return
+	}
+
+	// Sync workspace from GCS to local using rclone
+	filesPath := req.StoragePath + "/files"
+	if err := gcp.SyncFromGCS(ctx, bucket, filesPath, workspacePath); err != nil {
+		RuntimeError(w, "Failed to download workspace from GCS: "+err.Error())
+		return
+	}
+
+	// Apply file permissions if manifest is provided
+	var filesApplied int
+	var bytesTransferred int64
+	if req.Manifest != nil && len(req.Manifest.Files) > 0 {
+		if err := s.applyFilePermissions(workspacePath, req.Manifest.Files); err != nil {
+			// Log but don't fail - permissions are optional
+			log.Printf("[RuntimeHost] Warning: failed to apply file permissions: %v", err)
+		}
+		filesApplied = len(req.Manifest.Files)
+		for _, f := range req.Manifest.Files {
+			bytesTransferred += f.Size
+		}
+	} else {
+		// Count files in workspace if no manifest
+		filesApplied, bytesTransferred = s.countWorkspaceFiles(workspacePath)
+	}
+
+	resp := WorkspaceApplyResponse{
+		Applied:          true,
+		FilesApplied:     filesApplied,
+		BytesTransferred: bytesTransferred,
+	}
+
+	if s.config.Debug {
+		log.Printf("[RuntimeHost] Workspace apply complete: %d files, %d bytes",
+			resp.FilesApplied, resp.BytesTransferred)
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+// getAgentWorkspacePath resolves the workspace path for an agent.
+// It first tries to find the container and inspect its volume mounts,
+// then falls back to the known worktree location pattern.
+func (s *Server) getAgentWorkspacePath(ctx context.Context, agentID string) (string, error) {
+	// First, try to find the agent in the manager
+	agents, err := s.manager.List(ctx, map[string]string{"scion.agent": "true"})
+	if err != nil {
+		return "", fmt.Errorf("failed to list agents: %w", err)
+	}
+
+	var containerID string
+	var grovePath string
+	var agentName string
+
+	for _, agent := range agents {
+		if agent.Name == agentID || agent.ID == agentID || agent.AgentID == agentID {
+			containerID = agent.ID
+			grovePath = agent.GrovePath
+			agentName = agent.Name
+			break
+		}
+	}
+
+	if containerID == "" {
+		return "", fmt.Errorf("agent not found: %s", agentID)
+	}
+
+	// Try to get workspace from runtime (Docker volume mounts)
+	if s.runtime != nil {
+		workspacePath, err := s.runtime.GetWorkspacePath(ctx, containerID)
+		if err == nil && workspacePath != "" {
+			// Verify the path exists
+			if _, statErr := os.Stat(workspacePath); statErr == nil {
+				return workspacePath, nil
+			}
+		}
+	}
+
+	// Fall back to worktree location pattern
+	// Worktrees are typically at: {parent}/.scion_worktrees/{grove}/{agent}
+	if grovePath != "" && agentName != "" {
+		// Get grove's parent directory
+		groveParent := filepath.Dir(grovePath)
+		groveName := filepath.Base(groveParent)
+
+		worktreePath := filepath.Join(groveParent, ".scion_worktrees", groveName, agentName)
+		if _, statErr := os.Stat(worktreePath); statErr == nil {
+			return worktreePath, nil
+		}
+	}
+
+	// Try the configured worktree base if available
+	if s.config.WorktreeBase != "" && agentName != "" {
+		worktreePath := filepath.Join(s.config.WorktreeBase, agentName)
+		if _, statErr := os.Stat(worktreePath); statErr == nil {
+			return worktreePath, nil
+		}
+	}
+
+	return "", fmt.Errorf("could not resolve workspace path for agent %s", agentID)
+}
+
+// buildWorkspaceManifest builds a manifest from the workspace directory.
+func (s *Server) buildWorkspaceManifest(workspacePath string, excludePatterns []string) (*transfer.Manifest, error) {
+	builder := transfer.NewManifestBuilder(workspacePath)
+
+	// Add custom exclude patterns
+	if len(excludePatterns) > 0 {
+		builder.WithExcludePatterns(excludePatterns)
+	}
+
+	return builder.Build()
+}
+
+// uploadManifest uploads the workspace manifest to GCS.
+func (s *Server) uploadManifest(ctx context.Context, bucket, storagePath string, manifest *transfer.Manifest) error {
+	// Create storage client
+	cfg := storage.Config{
+		Provider: storage.ProviderGCS,
+		Bucket:   bucket,
+	}
+
+	store, err := storage.New(ctx, cfg)
+	if err != nil {
+		return fmt.Errorf("failed to create storage client: %w", err)
+	}
+	defer store.Close()
+
+	// Serialize manifest to JSON
+	manifestJSON, err := json.Marshal(manifest)
+	if err != nil {
+		return fmt.Errorf("failed to marshal manifest: %w", err)
+	}
+
+	// Upload manifest
+	manifestPath := storagePath + "/manifest.json"
+	_, err = store.Upload(ctx, manifestPath, strings.NewReader(string(manifestJSON)), storage.UploadOptions{
+		ContentType: "application/json",
+	})
+	if err != nil {
+		return fmt.Errorf("failed to upload manifest: %w", err)
+	}
+
+	return nil
+}
+
+// applyFilePermissions applies file mode permissions from the manifest.
+func (s *Server) applyFilePermissions(workspacePath string, files []transfer.FileInfo) error {
+	var firstErr error
+
+	for _, file := range files {
+		if file.Mode == "" {
+			continue
+		}
+
+		fullPath := filepath.Join(workspacePath, file.Path)
+
+		// Parse octal mode string (e.g., "0644")
+		var mode fs.FileMode
+		if _, err := fmt.Sscanf(file.Mode, "%o", &mode); err != nil {
+			if firstErr == nil {
+				firstErr = fmt.Errorf("invalid mode %s for %s: %w", file.Mode, file.Path, err)
+			}
+			continue
+		}
+
+		if err := os.Chmod(fullPath, mode); err != nil {
+			if firstErr == nil {
+				firstErr = fmt.Errorf("failed to chmod %s: %w", file.Path, err)
+			}
+			continue
+		}
+	}
+
+	return firstErr
+}
+
+// countWorkspaceFiles counts files and total size in the workspace directory.
+func (s *Server) countWorkspaceFiles(workspacePath string) (int, int64) {
+	var count int
+	var totalSize int64
+
+	filepath.WalkDir(workspacePath, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			return nil
+		}
+
+		count++
+		if info, err := d.Info(); err == nil {
+			totalSize += info.Size()
+		}
+
+		return nil
+	})
+
+	return count, totalSize
+}

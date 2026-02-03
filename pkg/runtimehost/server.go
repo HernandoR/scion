@@ -93,6 +93,14 @@ type ServerConfig struct {
 	// ControlChannelEnabled enables the WebSocket control channel to the Hub.
 	// This allows NAT traversal for hosts behind firewalls.
 	ControlChannelEnabled bool
+
+	// Workspace sync settings
+	// StorageBucket is the GCS bucket name for workspace storage.
+	// Used when workspace sync requests don't specify a bucket.
+	StorageBucket string
+	// WorktreeBase is the base directory for agent worktrees.
+	// Used as a fallback when resolving workspace paths.
+	WorktreeBase string
 }
 
 // DefaultServerConfig returns the default server configuration.
@@ -426,6 +434,10 @@ func (s *Server) registerRoutes() {
 	// Agent routes
 	s.mux.HandleFunc("/api/v1/agents", s.handleAgents)
 	s.mux.HandleFunc("/api/v1/agents/", s.handleAgentByID)
+
+	// Workspace sync routes (for Hub-initiated sync via control channel)
+	s.mux.HandleFunc("/api/v1/workspace/upload", s.handleWorkspaceUpload)
+	s.mux.HandleFunc("/api/v1/workspace/apply", s.handleWorkspaceApply)
 }
 
 // applyMiddleware wraps the handler with middleware.

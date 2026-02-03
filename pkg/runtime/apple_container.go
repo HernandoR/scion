@@ -176,3 +176,34 @@ func (r *AppleContainerRuntime) Exec(ctx context.Context, id string, cmd []strin
 	args := append([]string{"exec", id}, cmd...)
 	return runSimpleCommand(ctx, r.Command, args...)
 }
+
+// GetWorkspacePath returns the host path to the container's /workspace mount.
+func (r *AppleContainerRuntime) GetWorkspacePath(ctx context.Context, id string) (string, error) {
+	// Apple container runtime doesn't expose mount inspection in the same way as Docker.
+	// We need to rely on the labels stored when the container was created.
+	agents, err := r.List(ctx, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to list containers: %w", err)
+	}
+
+	for _, agent := range agents {
+		if agent.ID == id || agent.Name == id {
+			// Check for workspace path in labels
+			if workspacePath, ok := agent.Labels["scion.workspace_path"]; ok && workspacePath != "" {
+				return workspacePath, nil
+			}
+			// Fall back to grove path worktree pattern
+			if agent.GrovePath != "" && agent.Name != "" {
+				// Worktrees are typically at: {parent}/.scion_worktrees/{grove}/{agent}
+				groveName := agent.Grove
+				if groveName == "" {
+					groveName = "default"
+				}
+				return fmt.Sprintf("%s/../.scion_worktrees/%s/%s", agent.GrovePath, groveName, agent.Name), nil
+			}
+			break
+		}
+	}
+
+	return "", fmt.Errorf("could not determine workspace path for container %s", id)
+}

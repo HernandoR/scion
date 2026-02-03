@@ -1085,3 +1085,28 @@ func (r *KubernetesRuntime) Exec(ctx context.Context, id string, cmd []string) (
 
 	return stdout.String(), nil
 }
+
+// GetWorkspacePath returns the local workspace path for a Kubernetes pod.
+// For K8s, this returns the workspace path stored in annotations when the pod was created.
+func (r *KubernetesRuntime) GetWorkspacePath(ctx context.Context, id string) (string, error) {
+	namespace := r.DefaultNamespace
+
+	// Parse namespace from id if present (format: namespace/podname)
+	if strings.Contains(id, "/") {
+		parts := strings.SplitN(id, "/", 2)
+		namespace = parts[0]
+		id = parts[1]
+	}
+
+	pod, err := r.Client.Clientset.CoreV1().Pods(namespace).Get(ctx, id, metav1.GetOptions{})
+	if err != nil {
+		return "", fmt.Errorf("failed to get pod: %w", err)
+	}
+
+	// Check annotations for workspace path
+	if workspace, ok := pod.Annotations["scion.workspace"]; ok && workspace != "" {
+		return workspace, nil
+	}
+
+	return "", fmt.Errorf("no workspace path found for pod %s", id)
+}

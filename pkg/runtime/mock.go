@@ -7,15 +7,16 @@ import (
 )
 
 type MockRuntime struct {
-	RunFunc         func(ctx context.Context, config RunConfig) (string, error)
-	StopFunc        func(ctx context.Context, id string) error
-	DeleteFunc      func(ctx context.Context, id string) error
-	ListFunc        func(ctx context.Context, labelFilter map[string]string) ([]api.AgentInfo, error)
-	GetLogsFunc     func(ctx context.Context, id string) (string, error)
-	AttachFunc      func(ctx context.Context, id string) error
-	ImageExistsFunc func(ctx context.Context, image string) (bool, error)
-	SyncFunc        func(ctx context.Context, id string, direction SyncDirection) error
-	ExecFunc        func(ctx context.Context, id string, cmd []string) (string, error)
+	RunFunc              func(ctx context.Context, config RunConfig) (string, error)
+	StopFunc             func(ctx context.Context, id string) error
+	DeleteFunc           func(ctx context.Context, id string) error
+	ListFunc             func(ctx context.Context, labelFilter map[string]string) ([]api.AgentInfo, error)
+	GetLogsFunc          func(ctx context.Context, id string) (string, error)
+	AttachFunc           func(ctx context.Context, id string) error
+	ImageExistsFunc      func(ctx context.Context, image string) (bool, error)
+	SyncFunc             func(ctx context.Context, id string, direction SyncDirection) error
+	ExecFunc             func(ctx context.Context, id string, cmd []string) (string, error)
+	GetWorkspacePathFunc func(ctx context.Context, id string) (string, error)
 }
 
 func (m *MockRuntime) Name() string {
@@ -92,4 +93,11 @@ func (m *MockRuntime) Exec(ctx context.Context, id string, cmd []string) (string
 		return m.ExecFunc(ctx, id, cmd)
 	}
 	return "", nil
+}
+
+func (m *MockRuntime) GetWorkspacePath(ctx context.Context, id string) (string, error) {
+	if m.GetWorkspacePathFunc != nil {
+		return m.GetWorkspacePathFunc(ctx, id)
+	}
+	return "/mock/workspace", nil
 }

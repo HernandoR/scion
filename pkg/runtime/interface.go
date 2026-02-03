@@ -39,6 +39,9 @@ type Runtime interface {
 	PullImage(ctx context.Context, image string) error
 	Sync(ctx context.Context, id string, direction SyncDirection) error
 	Exec(ctx context.Context, id string, cmd []string) (string, error)
+	// GetWorkspacePath returns the host path to the container's /workspace mount.
+	// This is used for workspace sync operations.
+	GetWorkspacePath(ctx context.Context, id string) (string, error)
 }
 
 type SyncDirection string

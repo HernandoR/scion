@@ -1132,17 +1132,20 @@ All open questions have been resolved with the following decisions:
 - [x] Add workspace routes to Hub router in `pkg/hub/server.go`
 - [x] Add request/response types using `transfer.FileInfo`
 
-### Phase 2: Runtime Host Handlers (Day 3)
+### Phase 2: Runtime Host Handlers (Day 3) ✅
 
 **Goal:** Implement workspace upload/apply on Runtime Host.
 
-- [ ] Create `pkg/runtimehost/workspace_handlers.go`:
-  - [ ] `handleWorkspaceUpload()` - `POST /api/v1/workspace/upload`
-  - [ ] `handleWorkspaceApply()` - `POST /api/v1/workspace/apply`
-- [ ] Add `getAgentWorkspacePath()` for container workspace resolution
-- [ ] Integrate with existing `pkg/gcp/storage.go` (SyncToGCS/SyncFromGCS)
-- [ ] Add workspace routes to Runtime Host router
-- [ ] Use `transfer.CollectFiles()` for manifest building
+- [x] Create `pkg/runtimehost/workspace_handlers.go`:
+  - [x] `handleWorkspaceUpload()` - `POST /api/v1/workspace/upload`
+  - [x] `handleWorkspaceApply()` - `POST /api/v1/workspace/apply`
+- [x] Add `getAgentWorkspacePath()` for container workspace resolution
+- [x] Integrate with existing `pkg/gcp/storage.go` (SyncToGCS/SyncFromGCS)
+- [x] Add workspace routes to Runtime Host router
+- [x] Use `transfer.CollectFiles()` for manifest building
+- [x] Add `GetWorkspacePath()` method to Runtime interface (Docker, K8s, Apple Container)
+- [x] Add `StorageBucket` and `WorktreeBase` config options to ServerConfig
+- [x] Add unit tests for workspace handlers
 
 ### Phase 3: Hub Client & CLI (Day 4)
 

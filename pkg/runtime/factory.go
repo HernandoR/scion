@@ -141,3 +141,7 @@ func (e *ErrorRuntime) Sync(ctx context.Context, id string, direction SyncDirect
 func (e *ErrorRuntime) Exec(ctx context.Context, id string, cmd []string) (string, error) {
 	return "", e.Err
 }
+
+func (e *ErrorRuntime) GetWorkspacePath(ctx context.Context, id string) (string, error) {
+	return "", e.Err
+}

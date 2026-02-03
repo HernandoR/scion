@@ -232,3 +232,32 @@ func (r *DockerRuntime) Exec(ctx context.Context, id string, cmd []string) (stri
 	args := append([]string{"exec", id}, cmd...)
 	return runSimpleCommand(ctx, r.Command, args...)
 }
+
+// GetWorkspacePath returns the host path to the container's /workspace mount.
+func (r *DockerRuntime) GetWorkspacePath(ctx context.Context, id string) (string, error) {
+	// Use docker inspect to get mount information
+	out, err := runSimpleCommand(ctx, r.Command, "inspect", "--format", "{{json .Mounts}}", id)
+	if err != nil {
+		return "", fmt.Errorf("failed to inspect container: %w", err)
+	}
+
+	type mountInfo struct {
+		Source      string `json:"Source"`
+		Destination string `json:"Destination"`
+		Type        string `json:"Type"`
+	}
+
+	var mounts []mountInfo
+	if err := json.Unmarshal([]byte(out), &mounts); err != nil {
+		return "", fmt.Errorf("failed to parse mounts: %w", err)
+	}
+
+	// Look for /workspace mount
+	for _, m := range mounts {
+		if m.Destination == "/workspace" {
+			return m.Source, nil
+		}
+	}
+
+	return "", fmt.Errorf("no /workspace mount found for container %s", id)
+}
