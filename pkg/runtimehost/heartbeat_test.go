@@ -23,6 +23,14 @@ type mockHeartbeatCall struct {
 	Time      time.Time
 }
 
+func (m *mockRuntimeHostService) Create(ctx context.Context, req *hubclient.CreateHostRequest) (*hubclient.CreateHostResponse, error) {
+	return nil, nil
+}
+
+func (m *mockRuntimeHostService) Join(ctx context.Context, req *hubclient.JoinHostRequest) (*hubclient.JoinHostResponse, error) {
+	return nil, nil
+}
+
 func (m *mockRuntimeHostService) List(ctx context.Context, opts *hubclient.ListHostsOptions) (*hubclient.ListHostsResponse, error) {
 	return nil, nil
 }

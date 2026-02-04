@@ -315,6 +315,20 @@ func (s *Server) Start(ctx context.Context) error {
 	s.mu.Unlock()
 
 	log.Printf("Runtime Host API server starting on %s:%d (mode: %s)", s.config.Host, s.config.Port, s.config.Mode)
+	if s.config.Debug {
+		log.Printf("[RuntimeHost] Debug mode enabled")
+		log.Printf("[RuntimeHost] HostID: %s, HostName: %s", s.config.HostID, s.config.HostName)
+		if s.config.HubEndpoint != "" {
+			log.Printf("[RuntimeHost] Hub endpoint: %s", s.config.HubEndpoint)
+		} else {
+			log.Printf("[RuntimeHost] Warning: No hub endpoint configured")
+		}
+		if s.config.HubEnabled {
+			log.Printf("[RuntimeHost] Hub integration: enabled")
+		} else {
+			log.Printf("[RuntimeHost] Hub integration: disabled")
+		}
+	}
 
 	// Start heartbeat service if enabled and we have a Hub client
 	if s.config.HeartbeatEnabled && s.hubClient != nil && s.config.HostID != "" {

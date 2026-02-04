@@ -526,19 +526,28 @@ func runHubRegister(cmd *cobra.Command, args []string) error {
 	// Note: grove_id is now a client-generated top-level setting saved during init.
 	// We no longer save hub.groveId here as it's redundant with grove_id.
 
-	// Save the host token
-	if resp.HostToken != "" {
-		if settings.Hub == nil {
-			settings.Hub = &config.HubClientConfig{}
+	// Save hub settings to GLOBAL settings since registration is a host-level operation.
+	// The RuntimeHost server reads from global settings to know which Hub to connect to.
+	globalDir, err := config.GetGlobalDir()
+	if err != nil {
+		fmt.Printf("Warning: failed to get global directory: %v\n", err)
+	} else {
+		// Save the hub endpoint so RuntimeHost knows where to connect
+		endpoint := GetHubEndpoint(settings)
+		if endpoint != "" {
+			if err := config.UpdateSetting(globalDir, "hub.endpoint", endpoint, true); err != nil {
+				fmt.Printf("Warning: failed to save hub endpoint to global settings: %v\n", err)
+			}
 		}
-		settings.Hub.HostToken = resp.HostToken
-		settings.Hub.HostID = resp.Host.ID
 
-		if err := config.UpdateSetting(resolvedPath, "hub.hostToken", resp.HostToken, isGlobal); err != nil {
-			fmt.Printf("Warning: failed to save host token: %v\n", err)
-		}
-		if err := config.UpdateSetting(resolvedPath, "hub.hostId", resp.Host.ID, isGlobal); err != nil {
-			fmt.Printf("Warning: failed to save host ID: %v\n", err)
+		// Save the host token and ID to global settings
+		if resp.HostToken != "" {
+			if err := config.UpdateSetting(globalDir, "hub.hostToken", resp.HostToken, true); err != nil {
+				fmt.Printf("Warning: failed to save host token: %v\n", err)
+			}
+			if err := config.UpdateSetting(globalDir, "hub.hostId", resp.Host.ID, true); err != nil {
+				fmt.Printf("Warning: failed to save host ID: %v\n", err)
+			}
 		}
 	}
 

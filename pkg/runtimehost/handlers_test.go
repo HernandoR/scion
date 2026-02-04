@@ -278,3 +278,178 @@ func TestMethodNotAllowed(t *testing.T) {
 		t.Errorf("expected status %d, got %d", http.StatusMethodNotAllowed, w.Code)
 	}
 }
+
+// envCapturingManager captures the environment variables passed to Start().
+// Used for testing that Hub credentials are properly set.
+type envCapturingManager struct {
+	mockManager
+	lastEnv map[string]string
+}
+
+func (m *envCapturingManager) Start(ctx context.Context, opts api.StartOptions) (*api.AgentInfo, error) {
+	m.lastEnv = opts.Env
+	return m.mockManager.Start(ctx, opts)
+}
+
+func newTestServerWithEnvCapture() (*Server, *envCapturingManager) {
+	cfg := DefaultServerConfig()
+	cfg.HostID = "test-host-id"
+	cfg.HostName = "test-host"
+	cfg.Debug = true
+
+	mgr := &envCapturingManager{}
+
+	// Use mock runtime
+	rt := &runtime.MockRuntime{}
+
+	return New(cfg, mgr, rt), mgr
+}
+
+// TestCreateAgentWithHubCredentials tests that Hub authentication env vars are passed to agent.
+// This verifies the fix from progress-report.md: RuntimeHost sets SCION_HUB_URL, SCION_HUB_TOKEN, SCION_AGENT_ID.
+func TestCreateAgentWithHubCredentials(t *testing.T) {
+	srv, mgr := newTestServerWithEnvCapture()
+
+	body := `{
+		"name": "test-agent",
+		"agentId": "agent-uuid-123",
+		"hubEndpoint": "https://hub.example.com",
+		"agentToken": "secret-token-xyz",
+		"config": {"template": "claude"}
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agents", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusCreated, w.Code, w.Body.String())
+	}
+
+	// Verify Hub credentials were passed to the manager
+	if mgr.lastEnv == nil {
+		t.Fatal("expected environment variables to be set, got nil")
+	}
+
+	// Check SCION_HUB_URL
+	if got := mgr.lastEnv["SCION_HUB_URL"]; got != "https://hub.example.com" {
+		t.Errorf("expected SCION_HUB_URL='https://hub.example.com', got %q", got)
+	}
+
+	// Check SCION_HUB_TOKEN
+	if got := mgr.lastEnv["SCION_HUB_TOKEN"]; got != "secret-token-xyz" {
+		t.Errorf("expected SCION_HUB_TOKEN='secret-token-xyz', got %q", got)
+	}
+
+	// Check SCION_AGENT_ID
+	if got := mgr.lastEnv["SCION_AGENT_ID"]; got != "agent-uuid-123" {
+		t.Errorf("expected SCION_AGENT_ID='agent-uuid-123', got %q", got)
+	}
+}
+
+// TestCreateAgentWithDebugMode tests that SCION_DEBUG env var is set when debug mode is enabled.
+// This verifies Fix 4 from progress-report.md: Pass SCION_DEBUG env var.
+func TestCreateAgentWithDebugMode(t *testing.T) {
+	srv, mgr := newTestServerWithEnvCapture()
+
+	body := `{"name": "debug-agent"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agents", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusCreated, w.Code, w.Body.String())
+	}
+
+	// Verify SCION_DEBUG was set
+	if mgr.lastEnv == nil {
+		t.Fatal("expected environment variables to be set, got nil")
+	}
+
+	if got := mgr.lastEnv["SCION_DEBUG"]; got != "1" {
+		t.Errorf("expected SCION_DEBUG='1' when server in debug mode, got %q", got)
+	}
+}
+
+// TestCreateAgentWithResolvedEnv tests that resolvedEnv from Hub is merged with config.Env.
+func TestCreateAgentWithResolvedEnv(t *testing.T) {
+	srv, mgr := newTestServerWithEnvCapture()
+
+	// resolvedEnv contains Hub-provided secrets and variables
+	// config.Env contains explicit overrides (takes precedence)
+	body := `{
+		"name": "env-merge-agent",
+		"resolvedEnv": {
+			"SECRET_KEY": "hub-secret",
+			"SHARED_VAR": "from-hub"
+		},
+		"config": {
+			"env": ["EXPLICIT_VAR=explicit-value", "SHARED_VAR=from-config"]
+		}
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agents", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusCreated, w.Code, w.Body.String())
+	}
+
+	if mgr.lastEnv == nil {
+		t.Fatal("expected environment variables to be set, got nil")
+	}
+
+	// Check that resolvedEnv was applied
+	if got := mgr.lastEnv["SECRET_KEY"]; got != "hub-secret" {
+		t.Errorf("expected SECRET_KEY='hub-secret' from resolvedEnv, got %q", got)
+	}
+
+	// Check that config.Env was applied
+	if got := mgr.lastEnv["EXPLICIT_VAR"]; got != "explicit-value" {
+		t.Errorf("expected EXPLICIT_VAR='explicit-value' from config.Env, got %q", got)
+	}
+
+	// Check that config.Env takes precedence over resolvedEnv
+	if got := mgr.lastEnv["SHARED_VAR"]; got != "from-config" {
+		t.Errorf("expected SHARED_VAR='from-config' (config.Env should override resolvedEnv), got %q", got)
+	}
+}
+
+// TestCreateAgentWithoutHubCredentials tests agent creation without Hub integration.
+func TestCreateAgentWithoutHubCredentials(t *testing.T) {
+	srv, mgr := newTestServerWithEnvCapture()
+
+	body := `{"name": "local-agent"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agents", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusCreated, w.Code, w.Body.String())
+	}
+
+	// Env should still be set (at minimum SCION_DEBUG since debug mode is on)
+	if mgr.lastEnv == nil {
+		t.Fatal("expected environment to be initialized")
+	}
+
+	// Hub credentials should NOT be present
+	if _, exists := mgr.lastEnv["SCION_HUB_URL"]; exists {
+		t.Error("expected SCION_HUB_URL to not be set when no hubEndpoint provided")
+	}
+
+	if _, exists := mgr.lastEnv["SCION_HUB_TOKEN"]; exists {
+		t.Error("expected SCION_HUB_TOKEN to not be set when no agentToken provided")
+	}
+
+	if _, exists := mgr.lastEnv["SCION_AGENT_ID"]; exists {
+		t.Error("expected SCION_AGENT_ID to not be set when no agentId provided")
+	}
+}

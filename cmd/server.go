@@ -416,6 +416,13 @@ func runServerStart(cmd *cobra.Command, args []string) error {
 			}
 		}
 
+		// Get hub endpoint from config or settings.
+		// Priority: cfg.RuntimeHost.HubEndpoint > settings.Hub.Endpoint
+		hubEndpointForRH := cfg.RuntimeHost.HubEndpoint
+		if hubEndpointForRH == "" && settings.Hub != nil {
+			hubEndpointForRH = settings.Hub.Endpoint
+		}
+
 		// Create Runtime Host server configuration
 		rhCfg := runtimehost.ServerConfig{
 			Port:               cfg.RuntimeHost.Port,
@@ -423,7 +430,7 @@ func runServerStart(cmd *cobra.Command, args []string) error {
 			ReadTimeout:        cfg.RuntimeHost.ReadTimeout,
 			WriteTimeout:       cfg.RuntimeHost.WriteTimeout,
 			Mode:               cfg.RuntimeHost.Mode,
-			HubEndpoint:        cfg.RuntimeHost.HubEndpoint,
+			HubEndpoint:        hubEndpointForRH,
 			HostID:             hostID,
 			HostName:           hostName,
 			CORSEnabled:        cfg.RuntimeHost.CORSEnabled,
@@ -434,7 +441,7 @@ func runServerStart(cmd *cobra.Command, args []string) error {
 			Debug:              enableDebug,
 
 			// Hub integration for template hydration
-			HubEnabled:           cfg.RuntimeHost.HubEndpoint != "",
+			HubEnabled:           hubEndpointForRH != "",
 			HubToken:             devAuthToken, // Use dev token if available
 			TemplateCacheDir:     templateCacheDir,
 			TemplateCacheMaxSize: templateCacheMax,

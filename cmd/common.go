@@ -340,9 +340,16 @@ func startAgentViaHub(hubCtx *HubContext, agentName, task string, resume bool) e
 		Resume:   resume,
 	}
 
-	if agentImage != "" {
+	// Build config if we have image override or debug mode
+	if agentImage != "" || debugMode {
 		req.Config = &hubclient.AgentConfig{
 			Image: agentImage,
+		}
+		// Pass debug mode to agent via env var
+		if debugMode {
+			req.Config.Env = map[string]string{
+				"SCION_DEBUG": "1",
+			}
 		}
 	}
 

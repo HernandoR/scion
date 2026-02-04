@@ -464,11 +464,19 @@ func (s *Server) CreateAuthenticatedDispatcher() *HTTPAgentDispatcher {
 	// Configure token generator if available
 	if s.agentTokenService != nil {
 		dispatcher.SetTokenGenerator(s)
+	} else if s.config.Debug {
+		log.Printf("[Hub] Warning: No agent token service configured - agents won't have Hub credentials")
 	}
 
 	// Set Hub endpoint if configured
 	if s.config.HubEndpoint != "" {
 		dispatcher.SetHubEndpoint(s.config.HubEndpoint)
+		if s.config.Debug {
+			log.Printf("[Hub] Dispatcher hub endpoint: %s", s.config.HubEndpoint)
+		}
+	} else if s.config.Debug {
+		log.Printf("[Hub] Warning: No hub.endpoint configured - agents won't know how to reach Hub")
+		log.Printf("[Hub] Configure via: hub.endpoint in server.yaml or SCION_SERVER_HUB_ENDPOINT env var")
 	}
 
 	return dispatcher

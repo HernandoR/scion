@@ -472,3 +472,114 @@ func TestExpansion(t *testing.T) {
 		t.Errorf("expected volume source 'expanded_value/src', got %s", h.Volumes[0].Source)
 	}
 }
+
+// TestUpdateHubSettingsGlobal tests that hub settings can be saved to global settings.
+// This relates to Fix 5 from progress-report.md: Save hub endpoint to global settings during registration.
+func TestUpdateHubSettingsGlobal(t *testing.T) {
+	tmpDir := t.TempDir()
+	originalHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", originalHome)
+	os.Setenv("HOME", tmpDir)
+
+	// Create global .scion directory
+	globalScionDir := filepath.Join(tmpDir, ".scion")
+	if err := os.MkdirAll(globalScionDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("save hub endpoint to global settings", func(t *testing.T) {
+		err := UpdateSetting(globalScionDir, "hub.endpoint", "https://hub.example.com", true)
+		if err != nil {
+			t.Fatalf("UpdateSetting failed: %v", err)
+		}
+
+		// Reload settings and verify
+		s, err := LoadSettings(globalScionDir)
+		if err != nil {
+			t.Fatalf("LoadSettings failed: %v", err)
+		}
+
+		if s.Hub == nil {
+			t.Fatal("expected Hub config to be present")
+		}
+
+		if s.Hub.Endpoint != "https://hub.example.com" {
+			t.Errorf("expected hub.endpoint 'https://hub.example.com', got %q", s.Hub.Endpoint)
+		}
+	})
+
+	t.Run("save hub hostId to global settings", func(t *testing.T) {
+		err := UpdateSetting(globalScionDir, "hub.hostId", "host-uuid-123", true)
+		if err != nil {
+			t.Fatalf("UpdateSetting failed: %v", err)
+		}
+
+		s, err := LoadSettings(globalScionDir)
+		if err != nil {
+			t.Fatalf("LoadSettings failed: %v", err)
+		}
+
+		if s.Hub == nil {
+			t.Fatal("expected Hub config to be present")
+		}
+
+		if s.Hub.HostID != "host-uuid-123" {
+			t.Errorf("expected hub.hostId 'host-uuid-123', got %q", s.Hub.HostID)
+		}
+
+		// Previous setting should still be present
+		if s.Hub.Endpoint != "https://hub.example.com" {
+			t.Errorf("expected hub.endpoint to be preserved, got %q", s.Hub.Endpoint)
+		}
+	})
+}
+
+// TestHubSettingsLoadFromGlobal tests that hub settings from global are loaded into project settings.
+// This relates to Fix 6 from progress-report.md: RuntimeHost falls back to settings for hub endpoint.
+func TestHubSettingsLoadFromGlobal(t *testing.T) {
+	tmpDir := t.TempDir()
+	originalHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", originalHome)
+	os.Setenv("HOME", tmpDir)
+
+	// Create global settings with hub config
+	globalScionDir := filepath.Join(tmpDir, ".scion")
+	if err := os.MkdirAll(globalScionDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	globalSettings := `{
+		"hub": {
+			"endpoint": "https://global-hub.example.com",
+			"hostId": "global-host-id"
+		}
+	}`
+	if err := os.WriteFile(filepath.Join(globalScionDir, "settings.json"), []byte(globalSettings), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create project grove directory (no hub settings)
+	groveDir := filepath.Join(tmpDir, "my-project")
+	groveScionDir := filepath.Join(groveDir, ".scion")
+	if err := os.MkdirAll(groveScionDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Load settings from project grove (should inherit from global)
+	s, err := LoadSettings(groveScionDir)
+	if err != nil {
+		t.Fatalf("LoadSettings failed: %v", err)
+	}
+
+	if s.Hub == nil {
+		t.Fatal("expected Hub config to be inherited from global")
+	}
+
+	if s.Hub.Endpoint != "https://global-hub.example.com" {
+		t.Errorf("expected hub.endpoint from global, got %q", s.Hub.Endpoint)
+	}
+
+	if s.Hub.HostID != "global-host-id" {
+		t.Errorf("expected hub.hostId from global, got %q", s.Hub.HostID)
+	}
+}

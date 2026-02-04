@@ -230,3 +230,113 @@ func TestLoadGlobalConfigOAuthEnvOverride(t *testing.T) {
 		t.Errorf("expected Web GitHub ClientSecret 'test-web-gh-secret', got %q", cfg.OAuth.Web.GitHub.ClientSecret)
 	}
 }
+
+// TestHubEndpointConfiguration tests the Hub endpoint configuration from file and env.
+// This verifies Fix 2 from progress-report.md: Hub config includes endpoint field.
+func TestHubEndpointConfiguration(t *testing.T) {
+	t.Run("default is empty", func(t *testing.T) {
+		cfg := DefaultGlobalConfig()
+		if cfg.Hub.Endpoint != "" {
+			t.Errorf("expected Hub.Endpoint to be empty by default, got %q", cfg.Hub.Endpoint)
+		}
+	})
+
+	t.Run("from config file", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		configPath := filepath.Join(tmpDir, "server.yaml")
+
+		configContent := `
+hub:
+  endpoint: "https://hub.example.com"
+`
+		if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+			t.Fatalf("failed to write config file: %v", err)
+		}
+
+		cfg, err := LoadGlobalConfig(configPath)
+		if err != nil {
+			t.Fatalf("failed to load config: %v", err)
+		}
+
+		if cfg.Hub.Endpoint != "https://hub.example.com" {
+			t.Errorf("expected Hub.Endpoint 'https://hub.example.com', got %q", cfg.Hub.Endpoint)
+		}
+	})
+
+	t.Run("from environment variable", func(t *testing.T) {
+		os.Setenv("SCION_SERVER_HUB_ENDPOINT", "https://env-hub.example.com")
+		defer os.Unsetenv("SCION_SERVER_HUB_ENDPOINT")
+
+		cfg, err := LoadGlobalConfig("")
+		if err != nil {
+			t.Fatalf("failed to load config: %v", err)
+		}
+
+		if cfg.Hub.Endpoint != "https://env-hub.example.com" {
+			t.Errorf("expected Hub.Endpoint 'https://env-hub.example.com', got %q", cfg.Hub.Endpoint)
+		}
+	})
+
+	t.Run("env overrides config file", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		configPath := filepath.Join(tmpDir, "server.yaml")
+
+		configContent := `
+hub:
+  endpoint: "https://file-hub.example.com"
+`
+		if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+			t.Fatalf("failed to write config file: %v", err)
+		}
+
+		os.Setenv("SCION_SERVER_HUB_ENDPOINT", "https://env-hub.example.com")
+		defer os.Unsetenv("SCION_SERVER_HUB_ENDPOINT")
+
+		cfg, err := LoadGlobalConfig(configPath)
+		if err != nil {
+			t.Fatalf("failed to load config: %v", err)
+		}
+
+		if cfg.Hub.Endpoint != "https://env-hub.example.com" {
+			t.Errorf("expected Hub.Endpoint 'https://env-hub.example.com' (env override), got %q", cfg.Hub.Endpoint)
+		}
+	})
+}
+
+// TestRuntimeHostHubEndpointConfiguration tests RuntimeHost hubEndpoint config.
+// This relates to Fix 4/6 in progress-report.md: RuntimeHost hub endpoint configuration.
+func TestRuntimeHostHubEndpointConfiguration(t *testing.T) {
+	t.Run("from config file", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		configPath := filepath.Join(tmpDir, "server.yaml")
+
+		configContent := `
+runtimeHost:
+  hubEndpoint: "https://rh-hub.example.com"
+`
+		if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+			t.Fatalf("failed to write config file: %v", err)
+		}
+
+		cfg, err := LoadGlobalConfig(configPath)
+		if err != nil {
+			t.Fatalf("failed to load config: %v", err)
+		}
+
+		if cfg.RuntimeHost.HubEndpoint != "https://rh-hub.example.com" {
+			t.Errorf("expected RuntimeHost.HubEndpoint 'https://rh-hub.example.com', got %q", cfg.RuntimeHost.HubEndpoint)
+		}
+	})
+
+	t.Run("default is empty", func(t *testing.T) {
+		cfg := DefaultGlobalConfig()
+		if cfg.RuntimeHost.HubEndpoint != "" {
+			t.Errorf("expected RuntimeHost.HubEndpoint to be empty by default, got %q", cfg.RuntimeHost.HubEndpoint)
+		}
+	})
+
+	// Note: Env var override for runtimeHost.hubEndpoint doesn't work due to case sensitivity
+	// in koanf. The env var SCION_SERVER_RUNTIMEHOST_HUBENDPOINT maps to "runtimehost.hubEndpoint"
+	// but the config expects "runtimeHost.hubEndpoint" (camelCase). This is a known limitation.
+	// For RuntimeHost hubEndpoint, use config file or the settings.yaml fallback (Fix 6).
+}
