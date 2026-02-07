@@ -16,7 +16,7 @@ import (
 // HubServerConfig holds configuration for the Hub API server.
 type HubServerConfig struct {
 	Port         int           `json:"port" yaml:"port" koanf:"port"`
-	Host         string        `json:"broker" yaml:"host" koanf:"host"`
+	Host         string        `json:"host" yaml:"host" koanf:"host"`
 	ReadTimeout  time.Duration `json:"readTimeout" yaml:"readTimeout" koanf:"readTimeout"`
 	WriteTimeout time.Duration `json:"writeTimeout" yaml:"writeTimeout" koanf:"writeTimeout"`
 
@@ -43,7 +43,7 @@ type RuntimeBrokerConfig struct {
 	// Port is the HTTP port to listen on (default 9800)
 	Port int `json:"port" yaml:"port" koanf:"port"`
 	// Host is the address to bind to (e.g., "0.0.0.0" or "127.0.0.1")
-	Host string `json:"broker" yaml:"host" koanf:"host"`
+	Host string `json:"host" yaml:"host" koanf:"host"`
 	// ReadTimeout is the maximum duration for reading the entire request
 	ReadTimeout time.Duration `json:"readTimeout" yaml:"readTimeout" koanf:"readTimeout"`
 	// WriteTimeout is the maximum duration before timing out writes

@@ -178,7 +178,7 @@ func runServerStart(cmd *cobra.Command, args []string) error {
 	if cmd.Flags().Changed("port") {
 		cfg.Hub.Port = hubPort
 	}
-	if cmd.Flags().Changed("broker") {
+	if cmd.Flags().Changed("host") {
 		cfg.Hub.Host = hubHost
 	}
 	if cmd.Flags().Changed("db") {
@@ -501,6 +501,14 @@ func runServerStart(cmd *cobra.Command, args []string) error {
 		hubEndpointForRH := cfg.RuntimeBroker.HubEndpoint
 		if hubEndpointForRH == "" && settings.Hub != nil {
 			hubEndpointForRH = settings.Hub.Endpoint
+		}
+
+		// If still empty and hub is co-located, use localhost for heartbeat and hydration
+		if hubEndpointForRH == "" && enableHub {
+			hubEndpointForRH = fmt.Sprintf("http://localhost:%d", cfg.Hub.Port)
+			if enableDebug {
+				log.Printf("Co-located Hub detected: using %s for heartbeat and template hydration", hubEndpointForRH)
+			}
 		}
 
 		// Create Runtime Broker server configuration
