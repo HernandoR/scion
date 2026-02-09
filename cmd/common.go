@@ -424,8 +424,13 @@ func createAgentWithBrokerResolution(ctx context.Context, hubCtx *HubContext, gr
 			brokerMap, _ := availableBrokers[0].(map[string]interface{})
 			name, _ := brokerMap["name"].(string)
 			status, _ := brokerMap["status"].(string)
+			isDefault, _ := brokerMap["isDefault"].(bool)
 
-			fmt.Printf("\nUse runtime broker %s (%s)? [y/N]: ", name, status)
+			defaultLabel := ""
+			if isDefault {
+				defaultLabel = " (default)"
+			}
+			fmt.Printf("\nUse runtime broker %s (%s)%s? [y/N]: ", name, status, defaultLabel)
 			input, err := reader.ReadString('\n')
 			if err != nil {
 				return nil, fmt.Errorf("failed to read input: %w", err)
@@ -442,7 +447,12 @@ func createAgentWithBrokerResolution(ctx context.Context, hubCtx *HubContext, gr
 				brokerMap, _ := h.(map[string]interface{})
 				name, _ := brokerMap["name"].(string)
 				status, _ := brokerMap["status"].(string)
-				fmt.Printf("  [%d] %s (%s)\n", i+1, name, status)
+				isDefault, _ := brokerMap["isDefault"].(bool)
+				defaultLabel := ""
+				if isDefault {
+					defaultLabel = " (default)"
+				}
+				fmt.Printf("  [%d] %s (%s)%s\n", i+1, name, status, defaultLabel)
 			}
 			fmt.Println()
 

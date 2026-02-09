@@ -201,7 +201,8 @@ func RuntimeBrokerUnavailable(w http.ResponseWriter, brokerID string, availableB
 
 // RuntimeBrokerSummary is a minimal representation of a runtime broker for error responses.
 type RuntimeBrokerSummary struct {
-	ID     string `json:"id"`
-	Name   string `json:"name"`
-	Status string `json:"status"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Status    string `json:"status"`
+	IsDefault bool   `json:"isDefault,omitempty"`
 }

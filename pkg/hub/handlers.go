@@ -3508,14 +3508,25 @@ func (s *Server) resolveRuntimeBroker(ctx context.Context, w http.ResponseWriter
 		return "", err
 	}
 
-	// Convert to summary for error responses
-	brokerSummaries := make([]RuntimeBrokerSummary, len(availableBrokers))
-	for i, h := range availableBrokers {
-		brokerSummaries[i] = RuntimeBrokerSummary{
-			ID:     h.ID,
-			Name:   h.Name,
-			Status: h.Status,
+	// Convert to summary for error responses, marking and prioritizing the default broker
+	brokerSummaries := make([]RuntimeBrokerSummary, 0, len(availableBrokers))
+	var defaultBrokerSummary *RuntimeBrokerSummary
+	for _, h := range availableBrokers {
+		summary := RuntimeBrokerSummary{
+			ID:        h.ID,
+			Name:      h.Name,
+			Status:    h.Status,
+			IsDefault: h.ID == grove.DefaultRuntimeBrokerID,
 		}
+		if summary.IsDefault {
+			defaultBrokerSummary = &summary
+		} else {
+			brokerSummaries = append(brokerSummaries, summary)
+		}
+	}
+	// Prepend default broker if found (so it appears first in the list)
+	if defaultBrokerSummary != nil {
+		brokerSummaries = append([]RuntimeBrokerSummary{*defaultBrokerSummary}, brokerSummaries...)
 	}
 
 	// Case 1: Explicit runtime broker specified

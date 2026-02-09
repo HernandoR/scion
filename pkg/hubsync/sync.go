@@ -488,8 +488,13 @@ func ExecuteSync(ctx context.Context, hubCtx *HubContext, result *SyncResult, au
 				brokerMap, _ := availableBrokers[0].(map[string]interface{})
 				brokerName, _ := brokerMap["name"].(string)
 				status, _ := brokerMap["status"].(string)
+				isDefault, _ := brokerMap["isDefault"].(bool)
 
-				fmt.Printf("\nUse runtime broker %s (%s) for agent '%s'? [y/N]: ", brokerName, status, name)
+				defaultLabel := ""
+				if isDefault {
+					defaultLabel = " (default)"
+				}
+				fmt.Printf("\nUse runtime broker %s (%s)%s for agent '%s'? [y/N]: ", brokerName, status, defaultLabel, name)
 				input, err := reader.ReadString('\n')
 				if err != nil {
 					return fmt.Errorf("failed to read input: %w", err)
@@ -506,7 +511,12 @@ func ExecuteSync(ctx context.Context, hubCtx *HubContext, result *SyncResult, au
 					brokerMap, _ := h.(map[string]interface{})
 					brokerName, _ := brokerMap["name"].(string)
 					status, _ := brokerMap["status"].(string)
-					fmt.Printf("  [%d] %s (%s)\n", i+1, brokerName, status)
+					isDefault, _ := brokerMap["isDefault"].(bool)
+					defaultLabel := ""
+					if isDefault {
+						defaultLabel = " (default)"
+					}
+					fmt.Printf("  [%d] %s (%s)%s\n", i+1, brokerName, status, defaultLabel)
 				}
 				fmt.Println()
 
