@@ -35,7 +35,8 @@ RUN npm install
 COPY . .
 
 # Build the site
-RUN npm run build
+RUN npm run build \
+    && chmod -R a+rX dist
 
 # Runtime stage - use unprivileged nginx for security
 FROM nginxinc/nginx-unprivileged:stable-alpine
