@@ -1079,10 +1079,10 @@ All principal and group operations are logged:
 - [x] Add principal query endpoints (`/users/me/groups`, `/agents/{id}/groups`, `/principals/{type}/{id}`)
 
 ### Phase 5: Integration with Permissions System
-- [ ] Wire principal resolution into the policy evaluation algorithm from `permissions-design.md`
-- [ ] Implement `PolicyBinding` CRUD using Ent
-- [ ] Add delegation check as final fallback in access resolution
-- [ ] End-to-end integration tests covering all principal types
+- [x] Wire principal resolution into the policy evaluation algorithm from `permissions-design.md`
+- [x] Implement `PolicyBinding` CRUD using Ent
+- [x] Add delegation check as final fallback in access resolution
+- [x] End-to-end integration tests covering all principal types
 
 ---
 
