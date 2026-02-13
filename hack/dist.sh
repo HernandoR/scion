@@ -41,8 +41,8 @@ PLATFORMS=(
     "darwin/amd64"
     "linux/arm64"
     "linux/amd64"
-    "windows/arm64"
-    "windows/amd64"
+    # "windows/arm64"   # TODO: enable once Windows build issues are resolved
+    # "windows/amd64"   # TODO: enable once Windows build issues are resolved
 )
 
 function setup() {

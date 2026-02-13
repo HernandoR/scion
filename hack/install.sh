@@ -32,7 +32,10 @@ detect_platform() {
     case "$(uname -s)" in
         Darwin)  os="darwin" ;;
         Linux)   os="linux" ;;
-        MINGW*|MSYS*|CYGWIN*) os="windows" ;;
+        MINGW*|MSYS*|CYGWIN*)
+            echo "Error: Windows is not currently supported." >&2
+            exit 1
+            ;;
         *)
             echo "Error: unsupported operating system: $(uname -s)" >&2
             exit 1
