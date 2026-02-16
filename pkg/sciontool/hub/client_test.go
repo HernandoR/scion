@@ -29,16 +29,19 @@ import (
 
 func TestNewClient_FromEnvironment(t *testing.T) {
 	// Save and restore env vars
+	origEndpoint := os.Getenv(EnvHubEndpoint)
 	origURL := os.Getenv(EnvHubURL)
 	origToken := os.Getenv(EnvHubToken)
 	origAgentID := os.Getenv(EnvAgentID)
 	defer func() {
+		os.Setenv(EnvHubEndpoint, origEndpoint)
 		os.Setenv(EnvHubURL, origURL)
 		os.Setenv(EnvHubToken, origToken)
 		os.Setenv(EnvAgentID, origAgentID)
 	}()
 
 	t.Run("missing env vars returns nil", func(t *testing.T) {
+		os.Unsetenv(EnvHubEndpoint)
 		os.Unsetenv(EnvHubURL)
 		os.Unsetenv(EnvHubToken)
 		os.Unsetenv(EnvAgentID)
@@ -48,6 +51,7 @@ func TestNewClient_FromEnvironment(t *testing.T) {
 	})
 
 	t.Run("missing token returns nil", func(t *testing.T) {
+		os.Unsetenv(EnvHubEndpoint)
 		os.Setenv(EnvHubURL, "http://hub.example.com")
 		os.Unsetenv(EnvHubToken)
 		os.Unsetenv(EnvAgentID)
@@ -57,6 +61,7 @@ func TestNewClient_FromEnvironment(t *testing.T) {
 	})
 
 	t.Run("with all env vars returns client", func(t *testing.T) {
+		os.Unsetenv(EnvHubEndpoint)
 		os.Setenv(EnvHubURL, "http://hub.example.com")
 		os.Setenv(EnvHubToken, "test-token")
 		os.Setenv(EnvAgentID, "agent-123")
@@ -64,6 +69,28 @@ func TestNewClient_FromEnvironment(t *testing.T) {
 		client := NewClient()
 		require.NotNil(t, client)
 		assert.True(t, client.IsConfigured())
+	})
+
+	t.Run("prefers SCION_HUB_ENDPOINT over SCION_HUB_URL", func(t *testing.T) {
+		os.Setenv(EnvHubEndpoint, "http://endpoint.example.com")
+		os.Setenv(EnvHubURL, "http://url.example.com")
+		os.Setenv(EnvHubToken, "test-token")
+		os.Setenv(EnvAgentID, "agent-123")
+
+		client := NewClient()
+		require.NotNil(t, client)
+		assert.Equal(t, "http://endpoint.example.com", client.hubURL)
+	})
+
+	t.Run("falls back to SCION_HUB_URL when SCION_HUB_ENDPOINT not set", func(t *testing.T) {
+		os.Unsetenv(EnvHubEndpoint)
+		os.Setenv(EnvHubURL, "http://url.example.com")
+		os.Setenv(EnvHubToken, "test-token")
+		os.Setenv(EnvAgentID, "agent-123")
+
+		client := NewClient()
+		require.NotNil(t, client)
+		assert.Equal(t, "http://url.example.com", client.hubURL)
 	})
 }
 

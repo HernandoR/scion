@@ -338,9 +338,14 @@ func TestCreateAgentWithHubCredentials(t *testing.T) {
 		t.Fatal("expected environment variables to be set, got nil")
 	}
 
-	// Check SCION_HUB_URL
+	// Check SCION_HUB_ENDPOINT (primary)
+	if got := mgr.lastEnv["SCION_HUB_ENDPOINT"]; got != "https://hub.example.com" {
+		t.Errorf("expected SCION_HUB_ENDPOINT='https://hub.example.com', got %q", got)
+	}
+
+	// Check SCION_HUB_URL (legacy compat)
 	if got := mgr.lastEnv["SCION_HUB_URL"]; got != "https://hub.example.com" {
-		t.Errorf("expected SCION_HUB_URL='https://hub.example.com', got %q", got)
+		t.Errorf("expected SCION_HUB_URL='https://hub.example.com' (legacy compat), got %q", got)
 	}
 
 	// Check SCION_HUB_TOKEN
@@ -447,6 +452,10 @@ func TestCreateAgentWithoutHubCredentials(t *testing.T) {
 	}
 
 	// Hub credentials should NOT be present
+	if _, exists := mgr.lastEnv["SCION_HUB_ENDPOINT"]; exists {
+		t.Error("expected SCION_HUB_ENDPOINT to not be set when no hubEndpoint provided")
+	}
+
 	if _, exists := mgr.lastEnv["SCION_HUB_URL"]; exists {
 		t.Error("expected SCION_HUB_URL to not be set when no hubEndpoint provided")
 	}

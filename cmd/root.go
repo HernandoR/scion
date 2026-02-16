@@ -104,6 +104,14 @@ return an error instead of blocking.`,
 			autoHelp = *settings.CLI.AutoHelp
 		}
 
+		// Check versioned settings for cli.interactive_disabled
+		if vs, _, vsErr := config.LoadEffectiveSettings(grovePath); vsErr == nil && vs != nil {
+			if vs.CLI != nil && vs.CLI.InteractiveDisabled != nil && *vs.CLI.InteractiveDisabled {
+				nonInteractive = true
+				autoConfirm = true
+			}
+		}
+
 		if outputFormat != "" {
 			if outputFormat != "json" && outputFormat != "plain" {
 				return fmt.Errorf("invalid format: %s (allowed: json, plain)", outputFormat)

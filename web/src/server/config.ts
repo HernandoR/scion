@@ -120,7 +120,7 @@ export function loadConfig(): AppConfig {
     host,
     production,
     debug,
-    hubApiUrl: getEnvString('HUB_API_URL', 'http://localhost:9810'),
+    hubApiUrl: getEnvString('SCION_WEB_HUB_API_URL', '') || getEnvString('HUB_API_URL', 'http://localhost:9810'),
     baseUrl: getEnvString('BASE_URL', defaultBaseUrl),
 
     cors: {

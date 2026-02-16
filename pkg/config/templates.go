@@ -552,6 +552,12 @@ func MergeScionConfig(base, override *api.ScionConfig) *api.ScionConfig {
 	if override.Services != nil {
 		result.Services = override.Services
 	}
+	if override.MaxTurns > 0 {
+		result.MaxTurns = override.MaxTurns
+	}
+	if override.MaxDuration != "" {
+		result.MaxDuration = override.MaxDuration
+	}
 	if override.Info != nil {
 		if result.Info == nil {
 			infoCopy := *override.Info

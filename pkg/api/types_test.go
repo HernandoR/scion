@@ -17,6 +17,7 @@ package api
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestVolumeMountValidate(t *testing.T) {
@@ -309,6 +310,52 @@ func TestValidateServices(t *testing.T) {
 				} else if !strings.Contains(err.Error(), tt.wantErr) {
 					t.Errorf("ValidateServices() error = %q, want containing %q", err.Error(), tt.wantErr)
 				}
+			}
+		})
+	}
+}
+
+func TestParseDuration(t *testing.T) {
+	tests := []struct {
+		input string
+		want  time.Duration
+	}{
+		{"2h", 2 * time.Hour},
+		{"30m", 30 * time.Minute},
+		{"1h30m", 90 * time.Minute},
+		{"", 0},
+		{"invalid", 0},
+		{"abc123", 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := ParseDuration(tt.input)
+			if got != tt.want {
+				t.Errorf("ParseDuration(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestScionConfig_ParseMaxDuration(t *testing.T) {
+	tests := []struct {
+		name        string
+		maxDuration string
+		want        time.Duration
+	}{
+		{"2 hours", "2h", 2 * time.Hour},
+		{"30 minutes", "30m", 30 * time.Minute},
+		{"empty", "", 0},
+		{"invalid", "not-a-duration", 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := &ScionConfig{MaxDuration: tt.maxDuration}
+			got := c.ParseMaxDuration()
+			if got != tt.want {
+				t.Errorf("ParseMaxDuration() = %v, want %v", got, tt.want)
 			}
 		})
 	}

@@ -281,6 +281,42 @@ func TestMergeScionConfig(t *testing.T) {
 			t.Errorf("expected detached to be false, got %v", got.Detached)
 		}
 	})
+
+	t.Run("max_turns override replaces base", func(t *testing.T) {
+		base := &api.ScionConfig{MaxTurns: 10}
+		override := &api.ScionConfig{MaxTurns: 50}
+		got := MergeScionConfig(base, override)
+		if got.MaxTurns != 50 {
+			t.Errorf("expected MaxTurns=50, got %d", got.MaxTurns)
+		}
+	})
+
+	t.Run("max_turns zero override keeps base", func(t *testing.T) {
+		base := &api.ScionConfig{MaxTurns: 10}
+		override := &api.ScionConfig{}
+		got := MergeScionConfig(base, override)
+		if got.MaxTurns != 10 {
+			t.Errorf("expected MaxTurns=10, got %d", got.MaxTurns)
+		}
+	})
+
+	t.Run("max_duration override replaces base", func(t *testing.T) {
+		base := &api.ScionConfig{MaxDuration: "1h"}
+		override := &api.ScionConfig{MaxDuration: "2h"}
+		got := MergeScionConfig(base, override)
+		if got.MaxDuration != "2h" {
+			t.Errorf("expected MaxDuration=2h, got %s", got.MaxDuration)
+		}
+	})
+
+	t.Run("max_duration empty override keeps base", func(t *testing.T) {
+		base := &api.ScionConfig{MaxDuration: "1h"}
+		override := &api.ScionConfig{}
+		got := MergeScionConfig(base, override)
+		if got.MaxDuration != "1h" {
+			t.Errorf("expected MaxDuration=1h, got %s", got.MaxDuration)
+		}
+	})
 }
 
 func TestCloneTemplate(t *testing.T) {

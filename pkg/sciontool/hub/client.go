@@ -29,7 +29,9 @@ import (
 )
 
 const (
-	// EnvHubURL is the environment variable for the Hub URL.
+	// EnvHubEndpoint is the preferred environment variable for the Hub endpoint.
+	EnvHubEndpoint = "SCION_HUB_ENDPOINT"
+	// EnvHubURL is the legacy environment variable for the Hub URL.
 	EnvHubURL = "SCION_HUB_URL"
 	// EnvHubToken is the environment variable for the Hub JWT token.
 	EnvHubToken = "SCION_HUB_TOKEN"
@@ -95,9 +97,13 @@ type Client struct {
 }
 
 // NewClient creates a new Hub client from environment variables.
+// Reads SCION_HUB_ENDPOINT first, falling back to SCION_HUB_URL for legacy compat.
 // Returns nil if the required environment variables are not set.
 func NewClient() *Client {
-	hubURL := os.Getenv(EnvHubURL)
+	hubURL := os.Getenv(EnvHubEndpoint)
+	if hubURL == "" {
+		hubURL = os.Getenv(EnvHubURL)
+	}
 	token := os.Getenv(EnvHubToken)
 	agentID := os.Getenv(EnvAgentID)
 

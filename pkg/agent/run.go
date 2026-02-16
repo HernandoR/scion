@@ -17,10 +17,13 @@ package agent
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/user"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/ptone/scion-agent/pkg/api"
 	"github.com/ptone/scion-agent/pkg/config"
@@ -222,6 +225,16 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 		}
 	}
 
+	// Inject agent limit env vars from scion config
+	if finalScionCfg != nil {
+		if finalScionCfg.MaxTurns > 0 {
+			opts.Env["SCION_MAX_TURNS"] = strconv.Itoa(finalScionCfg.MaxTurns)
+		}
+		if finalScionCfg.MaxDuration != "" {
+			opts.Env["SCION_MAX_DURATION"] = finalScionCfg.MaxDuration
+		}
+	}
+
 	agentEnv, envWarnings := buildAgentEnv(finalScionCfg, opts.Env)
 	warnings = append(warnings, envWarnings...)
 
@@ -313,6 +326,13 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 		return nil, fmt.Errorf("failed to launch container: %w", err)
 	}
 
+	// Start duration timer if configured
+	if finalScionCfg != nil {
+		if maxDur := finalScionCfg.ParseMaxDuration(); maxDur > 0 {
+			startDurationTimer(m.Runtime, id, maxDur)
+		}
+	}
+
 	status := "running"
 	if opts.Resume {
 		status = "resumed"
@@ -393,4 +413,23 @@ func buildAgentEnv(scionCfg *api.ScionConfig, extraEnv map[string]string) ([]str
 		agentEnv = append(agentEnv, fmt.Sprintf("%s=%s", k, v))
 	}
 	return agentEnv, warnings
+}
+
+// startDurationTimer spawns a goroutine that stops the container after the given duration.
+// No-op if duration <= 0.
+func startDurationTimer(rt runtime.Runtime, containerID string, duration time.Duration) {
+	if duration <= 0 {
+		return
+	}
+	go func() {
+		timer := time.NewTimer(duration)
+		defer timer.Stop()
+		<-timer.C
+		slog.Info("Max duration reached, stopping agent", "containerID", containerID, "duration", duration)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := rt.Stop(ctx, containerID); err != nil {
+			slog.Error("Failed to stop agent after max duration", "containerID", containerID, "error", err)
+		}
+	}()
 }

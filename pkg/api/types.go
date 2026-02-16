@@ -21,6 +21,18 @@ import (
 	"time"
 )
 
+// ParseDuration parses a duration string, returning 0 for empty or invalid input.
+func ParseDuration(s string) time.Duration {
+	if s == "" {
+		return 0
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		return 0
+	}
+	return d
+}
+
 // ServiceSpec defines a sidecar process to run alongside the main harness.
 type ServiceSpec struct {
 	Name       string            `json:"name" yaml:"name"`
@@ -173,9 +185,16 @@ type ScionConfig struct {
 	Resources   *ResourceSpec     `json:"resources,omitempty" yaml:"resources,omitempty"`
 	Image       string            `json:"image,omitempty" yaml:"image,omitempty"`
 	Services    []ServiceSpec     `json:"services,omitempty" yaml:"services,omitempty"`
+	MaxTurns    int               `json:"max_turns,omitempty" yaml:"max_turns,omitempty"`
+	MaxDuration string            `json:"max_duration,omitempty" yaml:"max_duration,omitempty"`
 
 	// Info contains persisted metadata about the agent
 	Info *AgentInfo `json:"-" yaml:"-"`
+}
+
+// ParseMaxDuration returns the parsed max duration, or 0 for empty/invalid values.
+func (c *ScionConfig) ParseMaxDuration() time.Duration {
+	return ParseDuration(c.MaxDuration)
 }
 
 func (c *ScionConfig) IsDetached() bool {

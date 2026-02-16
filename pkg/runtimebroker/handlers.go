@@ -250,9 +250,10 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if hubEndpoint != "" {
-		env["SCION_HUB_URL"] = hubEndpoint
+		env["SCION_HUB_ENDPOINT"] = hubEndpoint
+		env["SCION_HUB_URL"] = hubEndpoint // legacy compat
 		if s.config.Debug {
-			slog.Debug("SCION_HUB_URL set", "url", hubEndpoint)
+			slog.Debug("SCION_HUB_ENDPOINT set", "endpoint", hubEndpoint)
 		}
 	}
 	if req.Slug != "" {

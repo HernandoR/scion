@@ -719,9 +719,19 @@ WARNING: Legacy settings format detected in /path/to/settings.yaml
 - `loadServerFromSettingsFile` helper reads the `server` key from `settings.yaml`, unmarshals into `V1ServerConfig`, and converts to `GlobalConfig`.
 - New test files: `pkg/config/state_test.go`. New tests added to `pkg/config/settings_v1_test.go` and `cmd/hub_test.go`.
 
-### Phase 5: New Feature Gates & Env Var Standardization
+### Phase 5: New Feature Gates & Env Var Standardization ✅ COMPLETE
 
 **Goal:** Implement features gated on versioned settings and standardize env var naming.
+
+**Implementation Notes:**
+- `MaxTurns` (int) and `MaxDuration` (string) added to `ScionConfig` with `ParseMaxDuration()` helper.
+- `MergeScionConfig` updated to merge both fields (override > 0 replaces base for turns, non-empty replaces for duration).
+- Agent runner injects `SCION_MAX_TURNS` and `SCION_MAX_DURATION` env vars into containers when configured.
+- `startDurationTimer` helper spawns a goroutine that stops the container after the configured duration.
+- `cli.interactive_disabled` wired via `LoadEffectiveSettings` in `cmd/root.go`, sets `nonInteractive` and `autoConfirm`.
+- Items 4 (named harness configs) and 5 (runtime type field) were already complete from Phase 3.
+- `SCION_HUB_URL` → `SCION_HUB_ENDPOINT`: runtime broker injects both (new primary + legacy compat); sciontool hub client reads `SCION_HUB_ENDPOINT` first, falls back to `SCION_HUB_URL`.
+- `HUB_API_URL` → `SCION_WEB_HUB_API_URL`: web server reads new var first, falls back to `HUB_API_URL`.
 
 **Deliverables:**
 1. **`max_turns`**: In the agent runner, check `scionConfig.MaxTurns`. Only available when `schema_version >= 1` in the agent template. If the agent's harness supports turn counting (requires harness-level support), enforce the limit by sending a stop signal.
