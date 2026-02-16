@@ -19,6 +19,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -56,9 +57,11 @@ func (s *SQLiteStore) CreateBrokerSecret(ctx context.Context, secret *store.Brok
 		secret.CreatedAt, nullableTime(secret.RotatedAt), nullableTime(secret.ExpiresAt), secret.Status,
 	)
 	if err != nil {
-		if strings.Contains(err.Error(), "UNIQUE constraint failed") ||
-			strings.Contains(err.Error(), "FOREIGN KEY constraint failed") {
+		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
 			return store.ErrAlreadyExists
+		}
+		if strings.Contains(err.Error(), "FOREIGN KEY constraint failed") {
+			return fmt.Errorf("broker %s does not exist: %w", secret.BrokerID, store.ErrNotFound)
 		}
 		return err
 	}

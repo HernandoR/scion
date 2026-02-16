@@ -18,6 +18,7 @@ package sqlite
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -139,6 +140,9 @@ func TestBrokerSecretForeignKey(t *testing.T) {
 	err := s.CreateBrokerSecret(ctx, secret)
 	if err == nil {
 		t.Error("Expected error when creating secret for non-existent broker")
+	}
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("Expected ErrNotFound for FK violation, got: %v", err)
 	}
 }
 

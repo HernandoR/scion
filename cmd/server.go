@@ -375,6 +375,7 @@ func runServerStart(cmd *cobra.Command, args []string) error {
 	var brokerSettings *config.Settings
 	var hubSrv *hub.Server
 	var mgr agent.Manager
+	var colocatedBrokerRegistered bool
 
 	// Initialize dev auth if enabled
 	var devAuthToken string
@@ -609,11 +610,26 @@ func runServerStart(cmd *cobra.Command, args []string) error {
 			}
 		}
 
-		// For co-located mode, generate in-memory credentials so the RuntimeBroker
-		// can establish a control channel to the Hub. This is required for PTY attach
-		// to work, as PTY streams are multiplexed over the control channel WebSocket.
+		// For co-located mode, register the broker record first, then generate
+		// in-memory credentials so the RuntimeBroker can establish a control
+		// channel to the Hub. The broker record must exist before the secret
+		// because broker_secrets has a FK constraint on runtime_brokers(id).
 		var inMemoryCreds *brokercredentials.BrokerCredentials
 		if enableHub && !simulateRemoteBroker && s != nil {
+			// Build RuntimeBroker endpoint for registration
+			rhEndpoint := fmt.Sprintf("http://%s:%d", cfg.RuntimeBroker.Host, cfg.RuntimeBroker.Port)
+			if cfg.RuntimeBroker.Host == "0.0.0.0" {
+				rhEndpoint = fmt.Sprintf("http://localhost:%d", cfg.RuntimeBroker.Port)
+			}
+
+			// Register global grove and runtime broker record first (required for FK constraint)
+			if err := registerGlobalGroveAndBroker(ctx, s, brokerID, brokerName, rhEndpoint, rt, serverAutoProvide, brokerSettings); err != nil {
+				log.Printf("Warning: failed to register global grove: %v", err)
+			} else {
+				colocatedBrokerRegistered = true
+				log.Printf("Registered global grove with runtime broker %s (endpoint: %s, autoProvide: %v)", brokerName, rhEndpoint, serverAutoProvide)
+			}
+
 			// Generate a 32-byte random secret key
 			secretKeyBytes := make([]byte, 32)
 			if _, err := rand.Read(secretKeyBytes); err != nil {
@@ -710,42 +726,25 @@ func runServerStart(cmd *cobra.Command, args []string) error {
 		log.Printf("Agent dispatcher configured (HTTP-based)")
 	}
 
-	// When RuntimeBroker is also enabled and not simulating remote broker,
-	// register the global grove and this broker for co-located operation.
-	if enableHub && cfg.RuntimeBroker.Enabled && s != nil && hubSrv != nil && mgr != nil && !simulateRemoteBroker {
-		// Build RuntimeBroker endpoint for registration
-		rhEndpoint := fmt.Sprintf("http://%s:%d", cfg.RuntimeBroker.Host, cfg.RuntimeBroker.Port)
-		// If binding to 0.0.0.0, use localhost for the endpoint
-		if cfg.RuntimeBroker.Host == "0.0.0.0" {
-			rhEndpoint = fmt.Sprintf("http://localhost:%d", cfg.RuntimeBroker.Port)
-		}
-
-		// Register global grove and runtime broker
-		if err := registerGlobalGroveAndBroker(ctx, s, brokerID, brokerName, rhEndpoint, rt, serverAutoProvide, brokerSettings); err != nil {
-			log.Printf("Warning: failed to register global grove: %v", err)
-		} else {
-			log.Printf("Registered global grove with runtime broker %s (endpoint: %s, autoProvide: %v)", brokerName, rhEndpoint, serverAutoProvide)
-
-			// Start internal heartbeat loop for co-located operation.
-			// This keeps the broker marked as online in the Hub database without
-			// requiring network heartbeats or broker credentials.
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				ticker := time.NewTicker(30 * time.Second)
-				defer ticker.Stop()
-				for {
-					select {
-					case <-ctx.Done():
-						return
-					case <-ticker.C:
-						if err := s.UpdateRuntimeBrokerHeartbeat(ctx, brokerID, store.BrokerStatusOnline); err != nil {
-							log.Printf("Warning: failed to update internal heartbeat for %s: %v", brokerName, err)
-						}
+	// Start internal heartbeat loop for co-located operation.
+	// Registration was already done above before broker secret creation.
+	if colocatedBrokerRegistered {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ticker := time.NewTicker(30 * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					if err := s.UpdateRuntimeBrokerHeartbeat(ctx, brokerID, store.BrokerStatusOnline); err != nil {
+						log.Printf("Warning: failed to update internal heartbeat for %s: %v", brokerName, err)
 					}
 				}
-			}()
-		}
+			}
+		}()
 	} else if simulateRemoteBroker && enableHub && cfg.RuntimeBroker.Enabled {
 		log.Printf("Simulating remote broker: skipping automatic global grove registration")
 	}
