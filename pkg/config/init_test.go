@@ -225,7 +225,8 @@ func TestSeedAgnosticTemplate(t *testing.T) {
 		}
 	}
 
-	// Verify scion-agent.yaml has no harness field and has default_harness_config
+	// Verify scion-agent.yaml has no harness field and no default_harness_config
+	// (default_harness_config should be set at the settings level, not in the template)
 	data, err := os.ReadFile(filepath.Join(targetDir, "scion-agent.yaml"))
 	if err != nil {
 		t.Fatal(err)
@@ -234,8 +235,8 @@ func TestSeedAgnosticTemplate(t *testing.T) {
 	if strings.Contains(content, "harness: claude") || strings.Contains(content, "harness: gemini") {
 		t.Error("agnostic template should not contain harness-specific field")
 	}
-	if !strings.Contains(content, "default_harness_config:") {
-		t.Error("agnostic template should contain default_harness_config field")
+	if strings.Contains(content, "default_harness_config:") {
+		t.Error("agnostic template should not contain default_harness_config (set in settings instead)")
 	}
 }
 

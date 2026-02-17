@@ -402,7 +402,7 @@ func TestComposition_FullInitProjectFlow(t *testing.T) {
 
 	os.Chdir(projectDir)
 
-	// Use the "default" template which is seeded as agnostic with default_harness_config: gemini
+	// Use the "default" template (agnostic); default_harness_config: gemini comes from settings
 	agentHome, _, cfg, err := ProvisionAgent(context.Background(), "full-flow-agent", "default", "", "", projectScionDir, "", "", "", "")
 	if err != nil {
 		t.Fatalf("ProvisionAgent failed: %v", err)
