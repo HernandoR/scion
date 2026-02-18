@@ -189,24 +189,33 @@ func CreateWorktree(path, branch string) error {
 }
 
 // RemoveWorktree removes a git worktree at the specified path.
+//
+// Instead of using "git worktree remove" (which does its own directory
+// deletion and can trigger macOS autofs timeouts on symlinks pointing to
+// container-internal paths), this function:
+//  1. Gathers git metadata (branch name, repo root) while the worktree exists.
+//  2. Removes the worktree directory using RemoveAllSafe (which uses unlinkat
+//     to avoid autofs triggers).
+//  3. Runs "git worktree prune" to clean up the now-stale worktree record.
 func RemoveWorktree(path string, deleteBranch bool) (bool, error) {
 	var branchName string
 	var repoRoot string
 	branchDeleted := false
 
-	if deleteBranch {
-		// Get the common git dir (main repo's .git dir)
-		cmd := exec.Command("git", "-C", path, "rev-parse", "--git-common-dir")
-		output, err := cmd.Output()
-		if err == nil {
-			commonDir := strings.TrimSpace(string(output))
-			if !filepath.IsAbs(commonDir) {
-				// If relative, it's relative to the worktree root
-				commonDir = filepath.Join(path, commonDir)
-			}
-			repoRoot = filepath.Dir(commonDir)
+	// Get the common git dir (main repo's .git dir) — needed for both
+	// pruning and optional branch deletion.
+	cmd := exec.Command("git", "-C", path, "rev-parse", "--git-common-dir")
+	output, err := cmd.Output()
+	if err == nil {
+		commonDir := strings.TrimSpace(string(output))
+		if !filepath.IsAbs(commonDir) {
+			// If relative, it's relative to the worktree root
+			commonDir = filepath.Join(path, commonDir)
 		}
+		repoRoot = filepath.Dir(commonDir)
+	}
 
+	if deleteBranch {
 		// Get branch name
 		cmd = exec.Command("git", "-C", path, "branch", "--show-current")
 		output, err = cmd.Output()
@@ -215,16 +224,25 @@ func RemoveWorktree(path string, deleteBranch bool) (bool, error) {
 		}
 	}
 
-	// Remove the worktree.
-	// We run this from the system root or anywhere to ensure we're not "in" the dir
-	Debugf("RemoveWorktree: running git worktree remove for %s", path)
-	worktreeRemoveStart := time.Now()
-	cmd := exec.Command("git", "worktree", "remove", path, "--force")
-	if err := cmd.Run(); err != nil {
-		Debugf("RemoveWorktree: git worktree remove failed in %v: %v", time.Since(worktreeRemoveStart), err)
+	// Remove the worktree directory ourselves using RemoveAllSafe, which
+	// uses unlinkat for symlinks to avoid triggering macOS autofs timeouts.
+	// This replaces "git worktree remove" which uses its own (slow) deletion.
+	Debugf("RemoveWorktree: removing worktree directory %s via RemoveAllSafe", path)
+	removeStart := time.Now()
+	if err := RemoveAllSafe(path); err != nil {
+		Debugf("RemoveWorktree: RemoveAllSafe failed in %v: %v", time.Since(removeStart), err)
 		return false, err
 	}
-	Debugf("RemoveWorktree: git worktree remove completed in %v", time.Since(worktreeRemoveStart))
+	Debugf("RemoveWorktree: directory removal completed in %v", time.Since(removeStart))
+
+	// Prune stale worktree records — git still has a reference to the
+	// directory we just deleted; pruning cleans that up.
+	if repoRoot != "" {
+		Debugf("RemoveWorktree: pruning stale worktree records in %s", repoRoot)
+		_ = PruneWorktreesIn(repoRoot)
+	} else {
+		_ = PruneWorktrees()
+	}
 
 	if deleteBranch && branchName != "" && repoRoot != "" {
 		// Now delete the branch from the main repo

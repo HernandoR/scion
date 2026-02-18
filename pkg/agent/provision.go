@@ -70,11 +70,10 @@ func DeleteAgentFiles(agentName string, grovePath string, removeBranch bool) (bo
 				util.Debugf("delete: worktree removal completed in %v (branch deleted: %v)", time.Since(worktreeStart), deleted)
 			} else {
 				util.Debugf("delete: worktree removal failed in %v: %v", time.Since(worktreeStart), err)
-				// Ensure the workspace directory is gone even if git worktree
-				// remove only partially succeeded, so that PruneWorktreesIn
+				// Ensure the workspace directory is gone even if worktree
+				// removal only partially succeeded, so that PruneWorktreesIn
 				// can detect the stale .git/worktrees entry.
-				_ = util.MakeWritableRecursive(agentWorkspace)
-				os.RemoveAll(agentWorkspace)
+				_ = util.RemoveAllSafe(agentWorkspace)
 			}
 		}
 
