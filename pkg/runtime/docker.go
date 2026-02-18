@@ -212,11 +212,7 @@ func (r *DockerRuntime) Attach(ctx context.Context, id string) error {
 		return fmt.Errorf("agent '%s' is not running (status: %s). Use 'scion start %s' to resume it.", id, agent.ContainerStatus, id)
 	}
 
-	if agent.Labels["scion.tmux"] == "true" {
-		return runInteractiveCommand(r.Command, "exec", "-it", "--user", "scion", agent.ContainerID, "tmux", "attach", "-t", "scion")
-	}
-
-	return runInteractiveCommand(r.Command, "attach", agent.ContainerID)
+	return runInteractiveCommand(r.Command, "exec", "-it", "--user", "scion", agent.ContainerID, "tmux", "attach", "-t", "scion")
 }
 
 func (r *DockerRuntime) ImageExists(ctx context.Context, image string) (bool, error) {

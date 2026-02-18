@@ -33,7 +33,6 @@ type RuntimeConfig struct {
 	Host      string            `json:"broker,omitempty" yaml:"host,omitempty" koanf:"host"`
 	Context   string            `json:"context,omitempty" yaml:"context,omitempty" koanf:"context"`
 	Namespace string            `json:"namespace,omitempty" yaml:"namespace,omitempty" koanf:"namespace"`
-	Tmux      *bool             `json:"tmux,omitempty" yaml:"tmux,omitempty" koanf:"tmux"`
 	Env       map[string]string `json:"env,omitempty" yaml:"env,omitempty" koanf:"env"`
 	Sync      string            `json:"sync,omitempty" yaml:"sync,omitempty" koanf:"sync"`
 }
@@ -57,7 +56,6 @@ type HarnessOverride struct {
 
 type ProfileConfig struct {
 	Runtime          string                     `json:"runtime" yaml:"runtime" koanf:"runtime"`
-	Tmux             *bool                      `json:"tmux,omitempty" yaml:"tmux,omitempty" koanf:"tmux"`
 	Env              map[string]string          `json:"env,omitempty" yaml:"env,omitempty" koanf:"env"`
 	Volumes          []api.VolumeMount          `json:"volumes,omitempty" yaml:"volumes,omitempty" koanf:"volumes"`
 	Resources        *api.ResourceSpec          `json:"resources,omitempty" yaml:"resources,omitempty" koanf:"resources"`
@@ -356,9 +354,6 @@ func MergeSettings(base *Settings, data []byte) error {
 			if v.Namespace != "" {
 				existing.Namespace = v.Namespace
 			}
-			if v.Tmux != nil {
-				existing.Tmux = v.Tmux
-			}
 			if v.Env != nil {
 				existing.Env = mergeMaps(existing.Env, expandEnvMap(v.Env))
 			}
@@ -400,9 +395,6 @@ func MergeSettings(base *Settings, data []byte) error {
 			existing := base.Profiles[k]
 			if v.Runtime != "" {
 				existing.Runtime = v.Runtime
-			}
-			if v.Tmux != nil {
-				existing.Tmux = v.Tmux
 			}
 			if v.Env != nil {
 				existing.Env = mergeMaps(existing.Env, expandEnvMap(v.Env))

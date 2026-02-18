@@ -121,10 +121,6 @@ func (m *AgentManager) Message(ctx context.Context, agentID string, message stri
 		return fmt.Errorf("agent '%s' not found or not running", agentID)
 	}
 
-	if agent.Labels["scion.tmux"] != "true" {
-		return fmt.Errorf("agent '%s' was not started with tmux support, cannot send message", agentID)
-	}
-
 	// 2. Resolve harness
 	harnessName := "generic"
 	if agent.GrovePath != "" {

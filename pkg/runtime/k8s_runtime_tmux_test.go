@@ -60,11 +60,9 @@ func TestKubernetesRuntime_Run_Tmux(t *testing.T) {
 	client := k8s.NewTestClient(fc, clientset)
 	r := NewKubernetesRuntime(client)
 
-	useTmux := true
 	config := RunConfig{
 		Name:    "tmux-agent",
 		Image:   "test-image",
-		UseTmux: useTmux,
 		Harness: &MockHarness{},
 	}
 
@@ -91,12 +89,7 @@ func TestKubernetesRuntime_Run_Tmux(t *testing.T) {
 	}
 
 	// Assertions
-	// 1. Check Label
-	if pod.Labels["scion.tmux"] != "true" {
-		t.Errorf("expected scion.tmux label to be true, got %s", pod.Labels["scion.tmux"])
-	}
-
-	// 2. Check Command
+	// Check Command
 	// Expected: tmux new-session -s scion "/bin/echo hello"
 	// Note: quoting might vary depending on implementation, but we expect tmux to be the entrypoint
 	if len(pod.Spec.Containers) == 0 {

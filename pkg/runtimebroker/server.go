@@ -505,11 +505,6 @@ func (s *Server) LookupContainerID(ctx context.Context, slug string) (string, er
 
 	agent := agents[0]
 
-	// Check if agent supports attach (has tmux)
-	if agent.Labels == nil || agent.Labels["scion.tmux"] != "true" {
-		return "", fmt.Errorf("agent '%s' does not support attach", slug)
-	}
-
 	// Get container ID - prefer label, then ContainerID from runtime, then ID
 	containerID := agent.Labels["scion.container.id"]
 	if containerID == "" {

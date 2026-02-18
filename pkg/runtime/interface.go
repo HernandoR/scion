@@ -35,7 +35,6 @@ type RunConfig struct {
 	Annotations     map[string]string
 	Auth            api.AuthConfig
 	Harness         api.Harness
-	UseTmux         bool
 	Task            string
 	CommandArgs     []string
 	Resume          bool

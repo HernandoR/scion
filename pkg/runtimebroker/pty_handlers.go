@@ -70,12 +70,6 @@ func (s *Server) handleAgentAttach(w http.ResponseWriter, r *http.Request) {
 
 	agent := agents[0]
 
-	// Check if agent has tmux support
-	if agent.Labels == nil || agent.Labels["scion.tmux"] != "true" {
-		Unprocessable(w, "Agent does not support attach")
-		return
-	}
-
 	// Get container ID
 	containerID := agent.Labels["scion.container.id"]
 	if containerID == "" {

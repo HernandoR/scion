@@ -238,13 +238,6 @@ func buildCommonRunArgs(config RunConfig) ([]string, error) {
 		}
 	}
 
-	if config.UseTmux {
-		if config.Labels == nil {
-			config.Labels = make(map[string]string)
-		}
-		config.Labels["scion.tmux"] = "true"
-	}
-
 	for k, v := range config.Labels {
 		addArg("--label", fmt.Sprintf("%s=%s", k, v))
 	}
@@ -265,22 +258,19 @@ func buildCommonRunArgs(config RunConfig) ([]string, error) {
 		return nil, fmt.Errorf("no harness provided")
 	}
 
-	if len(fuseMounts) > 0 {
-		var finalCmd []string
-		if config.UseTmux {
-			var quotedArgs []string
-			for _, a := range harnessArgs {
-				if strings.ContainsAny(a, " \t\n\"'$") {
-					quotedArgs = append(quotedArgs, fmt.Sprintf("%q", a))
-				} else {
-					quotedArgs = append(quotedArgs, a)
-				}
-			}
-			cmdLine := strings.Join(quotedArgs, " ")
-			finalCmd = []string{"tmux", "new-session", "-s", "scion", cmdLine}
+	// Build tmux-wrapped command
+	var quotedArgs []string
+	for _, a := range harnessArgs {
+		if strings.ContainsAny(a, " \t\n\"'$") {
+			quotedArgs = append(quotedArgs, fmt.Sprintf("%q", a))
 		} else {
-			finalCmd = harnessArgs
+			quotedArgs = append(quotedArgs, a)
 		}
+	}
+	cmdLine := strings.Join(quotedArgs, " ")
+
+	if len(fuseMounts) > 0 {
+		finalCmd := []string{"tmux", "new-session", "-s", "scion", cmdLine}
 
 		mountCmds := strings.Join(fuseMounts, " && ")
 		var quotedFinal []string
@@ -289,23 +279,8 @@ func buildCommonRunArgs(config RunConfig) ([]string, error) {
 		}
 		wrapped := fmt.Sprintf("%s && exec %s", mountCmds, strings.Join(quotedFinal, " "))
 		args = append(args, "sh", "-c", wrapped)
-
 	} else {
-		if config.UseTmux {
-			var quotedArgs []string
-			for _, a := range harnessArgs {
-				// Use %q to quote arguments that might have spaces or special characters
-				if strings.ContainsAny(a, " \t\n\"'$") {
-					quotedArgs = append(quotedArgs, fmt.Sprintf("%q", a))
-				} else {
-					quotedArgs = append(quotedArgs, a)
-				}
-			}
-			cmdLine := strings.Join(quotedArgs, " ")
-			args = append(args, "tmux", "new-session", "-s", "scion", cmdLine)
-		} else {
-			args = append(args, harnessArgs...)
-		}
+		args = append(args, "tmux", "new-session", "-s", "scion", cmdLine)
 	}
 
 	return args, nil

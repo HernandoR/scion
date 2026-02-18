@@ -45,7 +45,6 @@ runtimes:
     host: ""
   container:
     type: container
-    tmux: true
   kubernetes:
     type: kubernetes
     context: ""
@@ -55,10 +54,8 @@ runtimes:
 profiles:
   local:
     runtime: container  # Auto-adjusted by OS
-    tmux: true
     # harness_overrides:
     #   gemini:
     #     image: custom-image:tag
   remote:
     runtime: kubernetes
-    tmux: true

@@ -32,7 +32,6 @@ import (
 
 func TestVersionedSettings_YAMLRoundTrip(t *testing.T) {
 	autoHelp := true
-	tmux := true
 
 	vs := &VersionedSettings{
 		SchemaVersion:   "1",
@@ -49,7 +48,7 @@ func TestVersionedSettings_YAMLRoundTrip(t *testing.T) {
 		},
 		Runtimes: map[string]V1RuntimeConfig{
 			"docker": {Type: "docker", Host: ""},
-			"container": {Type: "container", Tmux: &tmux},
+			"container": {Type: "container"},
 		},
 		HarnessConfigs: map[string]HarnessConfigEntry{
 			"gemini": {
@@ -65,7 +64,6 @@ func TestVersionedSettings_YAMLRoundTrip(t *testing.T) {
 				Runtime:              "container",
 				DefaultTemplate:      "gemini",
 				DefaultHarnessConfig: "gemini",
-				Tmux:                 &tmux,
 			},
 		},
 	}
@@ -336,7 +334,6 @@ profiles:
 func TestAdaptLegacySettings_FullMapping(t *testing.T) {
 	autoHelp := true
 	enabled := true
-	tmux := true
 
 	legacy := &Settings{
 		ActiveProfile:   "local",
@@ -351,14 +348,14 @@ func TestAdaptLegacySettings_FullMapping(t *testing.T) {
 		},
 		Runtimes: map[string]RuntimeConfig{
 			"docker":    {Host: "tcp://localhost:2375"},
-			"container": {Tmux: &tmux},
+			"container": {},
 		},
 		Harnesses: map[string]HarnessConfig{
 			"gemini": {Image: "example.com/gemini:latest", User: "scion"},
 			"claude": {Image: "example.com/claude:latest", User: "scion"},
 		},
 		Profiles: map[string]ProfileConfig{
-			"local": {Runtime: "container", Tmux: &tmux},
+			"local": {Runtime: "container"},
 		},
 	}
 
@@ -489,7 +486,6 @@ func TestAdaptLegacySettings_EmptyFields(t *testing.T) {
 // --- convertVersionedToLegacy tests ---
 
 func TestConvertVersionedToLegacy(t *testing.T) {
-	tmux := true
 	vs := &VersionedSettings{
 		SchemaVersion:   "1",
 		ActiveProfile:   "local",
@@ -527,7 +523,6 @@ func TestConvertVersionedToLegacy(t *testing.T) {
 				Runtime:              "docker",
 				DefaultTemplate:      "gemini",
 				DefaultHarnessConfig: "gemini",
-				Tmux:                 &tmux,
 			},
 		},
 	}
@@ -1231,7 +1226,6 @@ func TestVersionedSettings_IsHubLocalOnly(t *testing.T) {
 
 func TestLegacyAndVersionedResolution_SameResult(t *testing.T) {
 	// Build legacy settings
-	tmux := true
 	legacy := &Settings{
 		ActiveProfile: "local",
 		Runtimes: map[string]RuntimeConfig{
@@ -1250,7 +1244,6 @@ func TestLegacyAndVersionedResolution_SameResult(t *testing.T) {
 		Profiles: map[string]ProfileConfig{
 			"local": {
 				Runtime: "docker",
-				Tmux:    &tmux,
 				Env:     map[string]string{"PROFILE_KEY": "profile_val"},
 				HarnessOverrides: map[string]HarnessOverride{
 					"gemini": {
@@ -2341,8 +2334,6 @@ profiles:
 	assert.Equal(t, "container", vs.Runtimes["container"].Type)
 	assert.Equal(t, "docker", vs.Runtimes["docker"].Type)
 	assert.Equal(t, "kubernetes", vs.Runtimes["kubernetes"].Type)
-	require.NotNil(t, vs.Runtimes["container"].Tmux)
-	assert.True(t, *vs.Runtimes["container"].Tmux)
 
 	// HarnessConfigs — should be renamed from harnesses
 	assert.Len(t, vs.HarnessConfigs, 4)

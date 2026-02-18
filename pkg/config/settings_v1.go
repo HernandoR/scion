@@ -283,7 +283,6 @@ type V1RuntimeConfig struct {
 	Host      string            `json:"host,omitempty" yaml:"host,omitempty" koanf:"host"`
 	Context   string            `json:"context,omitempty" yaml:"context,omitempty" koanf:"context"`
 	Namespace string            `json:"namespace,omitempty" yaml:"namespace,omitempty" koanf:"namespace"`
-	Tmux      *bool             `json:"tmux,omitempty" yaml:"tmux,omitempty" koanf:"tmux"`
 	Env       map[string]string `json:"env,omitempty" yaml:"env,omitempty" koanf:"env"`
 	Sync      string            `json:"sync,omitempty" yaml:"sync,omitempty" koanf:"sync"`
 }
@@ -317,7 +316,6 @@ type V1ProfileConfig struct {
 	Runtime              string                       `json:"runtime" yaml:"runtime" koanf:"runtime"`
 	DefaultTemplate      string                       `json:"default_template,omitempty" yaml:"default_template,omitempty" koanf:"default_template"`
 	DefaultHarnessConfig string                       `json:"default_harness_config,omitempty" yaml:"default_harness_config,omitempty" koanf:"default_harness_config"`
-	Tmux                 *bool                        `json:"tmux,omitempty" yaml:"tmux,omitempty" koanf:"tmux"`
 	Env                  map[string]string            `json:"env,omitempty" yaml:"env,omitempty" koanf:"env"`
 	Volumes              []api.VolumeMount            `json:"volumes,omitempty" yaml:"volumes,omitempty" koanf:"volumes"`
 	Resources            *api.ResourceSpec            `json:"resources,omitempty" yaml:"resources,omitempty" koanf:"resources"`
@@ -866,7 +864,6 @@ func AdaptLegacySettings(legacy *Settings) (*VersionedSettings, []string) {
 				Host:      rc.Host,
 				Context:   rc.Context,
 				Namespace: rc.Namespace,
-				Tmux:      rc.Tmux,
 				Env:       rc.Env,
 				Sync:      rc.Sync,
 			}
@@ -895,7 +892,6 @@ func AdaptLegacySettings(legacy *Settings) (*VersionedSettings, []string) {
 		for name, pc := range legacy.Profiles {
 			profile := V1ProfileConfig{
 				Runtime:   pc.Runtime,
-				Tmux:      pc.Tmux,
 				Env:       pc.Env,
 				Volumes:   pc.Volumes,
 				Resources: pc.Resources,
@@ -980,7 +976,6 @@ func convertVersionedToLegacy(vs *VersionedSettings) *Settings {
 				Host:      rc.Host,
 				Context:   rc.Context,
 				Namespace: rc.Namespace,
-				Tmux:      rc.Tmux,
 				Env:       rc.Env,
 				Sync:      rc.Sync,
 			}
@@ -1008,7 +1003,6 @@ func convertVersionedToLegacy(vs *VersionedSettings) *Settings {
 		for name, pc := range vs.Profiles {
 			profile := ProfileConfig{
 				Runtime:   pc.Runtime,
-				Tmux:      pc.Tmux,
 				Env:       pc.Env,
 				Volumes:   pc.Volumes,
 				Resources: pc.Resources,

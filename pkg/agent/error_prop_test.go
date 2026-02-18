@@ -124,9 +124,9 @@ func TestStart_ErrorPropagation_Tmux(t *testing.T) {
 	}
 
 	// Verify the error message
-	// Correct behavior: should NOT wrap in "failed to launch container with tmux..." if the error is "no such file or directory"
-	
-	unexpectedPart := "failed to launch container with tmux: tmux binary not found"
+	// Correct behavior: should NOT wrap in "tmux binary not found" if the error is "no such file or directory"
+
+	unexpectedPart := "tmux binary not found"
 	if strings.Contains(err.Error(), unexpectedPart) {
 		t.Errorf("Error should NOT contain '%s', but got: %v", unexpectedPart, err)
 	}
@@ -170,7 +170,7 @@ func TestStart_ErrorPropagation_Tmux_Missing(t *testing.T) {
 	// Create harness-config for "generic"
 	seedTestHarnessConfig(t, globalScionDir, "generic", "generic")
 
-	// Create .scion/settings.json with tmux enabled for "mock" runtime
+	// Create .scion/settings.json for "mock" runtime
 	projectDir := filepath.Join(tmpDir, "project")
 	projectScionDir := filepath.Join(projectDir, ".scion")
 	if err := os.MkdirAll(projectScionDir, 0755); err != nil {
@@ -180,9 +180,7 @@ func TestStart_ErrorPropagation_Tmux_Missing(t *testing.T) {
 	settingsJSON := `
 {
   "runtimes": {
-    "mock": {
-      "tmux": true
-    }
+    "mock": {}
   },
   "profiles": {
     "test": {
@@ -232,8 +230,8 @@ func TestStart_ErrorPropagation_Tmux_Missing(t *testing.T) {
 	}
 
 	// Verify the error message
-	// Should wrap in "failed to launch container with tmux: tmux binary not found..."
-	expectedPart := "failed to launch container with tmux: tmux binary not found"
+	// Should wrap in "failed to launch container: tmux binary not found..."
+	expectedPart := "failed to launch container: tmux binary not found"
 	if !strings.Contains(err.Error(), expectedPart) {
 		t.Errorf("Expected error to contain '%s', but got: %v", expectedPart, err)
 	}

@@ -32,7 +32,7 @@ func TestMessage(t *testing.T) {
 					ContainerID:     "agent-1",
 					Name:            "test-agent",
 					ContainerStatus: "Up 2 minutes",
-					Labels:          map[string]string{"scion.name": "test-agent", "scion.tmux": "true"},
+					Labels:          map[string]string{"scion.name": "test-agent"},
 				},
 			}, nil
 		},
@@ -79,13 +79,13 @@ func TestBroadcast(t *testing.T) {
 					ContainerID:     "agent-1",
 					Name:            "test-agent-1",
 					ContainerStatus: "Up 2 minutes",
-					Labels:          map[string]string{"scion.name": "test-agent-1", "scion.tmux": "true"},
+					Labels:          map[string]string{"scion.name": "test-agent-1"},
 				},
 				{
 					ContainerID:     "agent-2",
 					Name:            "test-agent-2",
 					ContainerStatus: "Up 1 minute",
-					Labels:          map[string]string{"scion.name": "test-agent-2", "scion.tmux": "true"},
+					Labels:          map[string]string{"scion.name": "test-agent-2"},
 				},
 			}, nil
 		},

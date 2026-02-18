@@ -38,7 +38,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/remotecommand"
 )
 
@@ -97,13 +96,6 @@ func (r *KubernetesRuntime) Run(ctx context.Context, config RunConfig) (string, 
 		}
 		config.Annotations["scion.homedir"] = config.HomeDir
 		config.Annotations["scion.username"] = config.UnixUsername
-	}
-
-	if config.UseTmux {
-		if config.Labels == nil {
-			config.Labels = make(map[string]string)
-		}
-		config.Labels["scion.tmux"] = "true"
 	}
 
 	pod := r.buildPod(namespace, config)
@@ -209,21 +201,16 @@ func (r *KubernetesRuntime) buildPod(namespace string, config RunConfig) *corev1
 		harnessArgs = []string{"/bin/sh", "-c", "sleep infinity"}
 	}
 
-	if config.UseTmux {
-		var quotedArgs []string
-		for _, a := range harnessArgs {
-			// Use %q to quote arguments that might have spaces or special characters
-			if strings.ContainsAny(a, " \t\n\"'$") {
-				quotedArgs = append(quotedArgs, fmt.Sprintf("%q", a))
-			} else {
-				quotedArgs = append(quotedArgs, a)
-			}
+	var quotedArgs []string
+	for _, a := range harnessArgs {
+		if strings.ContainsAny(a, " \t\n\"'$") {
+			quotedArgs = append(quotedArgs, fmt.Sprintf("%q", a))
+		} else {
+			quotedArgs = append(quotedArgs, a)
 		}
-		cmdLine := strings.Join(quotedArgs, " ")
-		cmd = []string{"tmux", "new-session", "-s", "scion", cmdLine}
-	} else {
-		cmd = harnessArgs
 	}
+	cmdLine := strings.Join(quotedArgs, " ")
+	cmd = []string{"tmux", "new-session", "-s", "scion", cmdLine}
 
 	// Env Resolution
 	envVars := []corev1.EnvVar{}
@@ -747,45 +734,24 @@ func (r *KubernetesRuntime) Attach(ctx context.Context, id string) error {
 		return fmt.Errorf("agent '%s' is not running (status: %s). Use 'scion start %s' to resume it.", id, agent.ContainerStatus, id)
 	}
 
-	fmt.Printf("Attaching to pod '%s' (use Ctrl-P, Ctrl-Q to detach)...\n", podName)
+	fmt.Printf("Attaching to pod '%s' (use Ctrl-b d to detach)...\n", podName)
 
-	var req *rest.Request
-	var realStdin io.Reader
-	useTmux := agent.Labels["scion.tmux"] == "true"
+	req := r.Client.Clientset.CoreV1().RESTClient().Post().
+		Resource("pods").
+		Name(podName).
+		Namespace(namespace).
+		SubResource("exec")
 
-	if useTmux {
-		req = r.Client.Clientset.CoreV1().RESTClient().Post().
-			Resource("pods").
-			Name(podName).
-			Namespace(namespace).
-			SubResource("exec")
-
-		option := &corev1.PodExecOptions{
-			Container: "agent",
-			Command:   []string{"tmux", "attach", "-t", "scion"},
-			Stdin:     true,
-			Stdout:    true,
-			Stderr:    true,
-			TTY:       true,
-		}
-		req.VersionedParams(option, scheme.ParameterCodec)
-		realStdin = os.Stdin
-	} else {
-		req = r.Client.Clientset.CoreV1().RESTClient().Post().
-			Resource("pods").
-			Name(podName).
-			Namespace(namespace).
-			SubResource("attach")
-
-		option := &corev1.PodAttachOptions{
-			Container: "agent",
-			Stdin:     true,
-			Stdout:    true,
-			Stderr:    true,
-			TTY:       true,
-		}
-		req.VersionedParams(option, scheme.ParameterCodec)
+	option := &corev1.PodExecOptions{
+		Container: "agent",
+		Command:   []string{"tmux", "attach", "-t", "scion"},
+		Stdin:     true,
+		Stdout:    true,
+		Stderr:    true,
+		TTY:       true,
 	}
+	req.VersionedParams(option, scheme.ParameterCodec)
+	realStdin := os.Stdin
 
 	executor, err := remotecommand.NewSPDYExecutor(r.Client.Config, "POST", req.URL())
 	if err != nil {
@@ -832,14 +798,6 @@ func (r *KubernetesRuntime) Attach(ctx context.Context, id string) error {
 		}
 	}()
 	defer signal.Stop(sigChan)
-
-	// Wrap stdin with a reader that looks for the detach sequence if NOT using tmux
-	if !useTmux {
-		realStdin = &detachReader{
-			reader: os.Stdin,
-			cancel: cancel,
-		}
-	}
 
 	// Trigger a "resize dance" to force TUI redraw. Some TUIs only redraw
 	// when they receive a SIGWINCH where the dimensions actually change.
@@ -888,54 +846,6 @@ func (t *terminalSizeQueue) Next() *remotecommand.TerminalSize {
 		return nil
 	}
 	return &size
-}
-
-// detachReader wraps an io.Reader to look for the Ctrl-P, Ctrl-Q sequence
-type detachReader struct {
-	reader io.Reader
-	cancel context.CancelFunc
-	state  int // 0: normal, 1: saw Ctrl-P
-}
-
-func (r *detachReader) Read(p []byte) (int, error) {
-	for {
-		n, err := r.reader.Read(p)
-		if err != nil {
-			return n, err
-		}
-		if n == 0 {
-			continue
-		}
-
-		outIdx := 0
-		for i := 0; i < n; i++ {
-			b := p[i]
-			if r.state == 1 {
-				if b == 0x11 { // Ctrl-Q
-					fmt.Print("\r\nDetached from agent.\r\n")
-					r.cancel()
-					return outIdx, io.EOF
-				}
-				// Not part of the sequence, we should ideally re-insert the Ctrl-P (0x10)
-				// but for simplicity in this byte-by-byte fix, we just reset.
-				// Most TUIs will handle a missing Ctrl-P better than a hang.
-				r.state = 0
-			}
-
-			if b == 0x10 { // Ctrl-P
-				r.state = 1
-				continue
-			}
-
-			p[outIdx] = b
-			outIdx++
-		}
-
-		if outIdx > 0 {
-			return outIdx, nil
-		}
-		// If we consumed everything (like just a Ctrl-P), loop to read more
-	}
 }
 
 func (r *KubernetesRuntime) ImageExists(ctx context.Context, image string) (bool, error) {

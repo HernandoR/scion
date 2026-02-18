@@ -123,7 +123,6 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 	// Default values
 	resolvedImage := "gemini-cli-sandbox"
 	unixUsername := "root"
-	useTmux := false
 	profileName := opts.Profile
 
 	// Load on-disk harness-config for the container user (base layer).
@@ -168,22 +167,9 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 		if profileName == "" {
 			profileName = settings.ActiveProfile
 		}
-		if p, ok := settings.Profiles[profileName]; ok {
-			// 1. Start with runtime default if available
-			if rCfg, ok := settings.Runtimes[p.Runtime]; ok && rCfg.Tmux != nil {
-				useTmux = *rCfg.Tmux
-			}
-			// 2. Override with profile setting if explicitly set
-			if p.Tmux != nil {
-				useTmux = *p.Tmux
-			}
-		}
 	}
 
 	var warnings []string
-	if m.Runtime.Name() == "container" && !useTmux {
-		warnings = append(warnings, "Warning: Apple container runtime does not support 'attach' without tmux. Sessions will be non-interactive after start.")
-	}
 
 	if finalScionCfg != nil && finalScionCfg.Image != "" {
 		resolvedImage = finalScionCfg.Image
@@ -219,11 +205,6 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 
 	if opts.Detached != nil {
 		detached = *opts.Detached
-	}
-
-	if useTmux {
-		// We no longer automatically append -tmux to the image tag.
-		// We launch optimistically and provide a clear error if tmux is missing.
 	}
 
 	exists, err := m.Runtime.ImageExists(ctx, resolvedImage)
@@ -302,7 +283,6 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 		RepoRoot:     repoRoot,
 		Auth:         auth,
 		Harness:      h,
-		UseTmux:      useTmux,
 		Task:         task,
 		CommandArgs: func() []string {
 			var args []string
@@ -355,11 +335,11 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 	}
 	id, err := m.Runtime.Run(ctx, runCfg)
 	if err != nil {
-		if useTmux && (strings.Contains(err.Error(), "executable file not found") ||
+		if strings.Contains(err.Error(), "executable file not found") ||
 			strings.Contains(err.Error(), "tmux: command not found") ||
-			strings.Contains(err.Error(), "tmux: not found")) {
-			return nil, fmt.Errorf("failed to launch container with tmux: tmux binary not found in image '%s'. "+
-				"Please ensure the image has tmux installed, use an image with a :tmux tag, or disable tmux in settings. Error: %w", resolvedImage, err)
+			strings.Contains(err.Error(), "tmux: not found") {
+			return nil, fmt.Errorf("failed to launch container: tmux binary not found in image '%s'. "+
+				"Ensure the image has tmux installed. Error: %w", resolvedImage, err)
 		}
 		return nil, fmt.Errorf("failed to launch container: %w", err)
 	}

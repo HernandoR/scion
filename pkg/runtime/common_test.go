@@ -55,7 +55,7 @@ func TestBuildCommonRunArgs(t *testing.T) {
 				Image:        "scion-agent:latest",
 				Task:         "hello",
 			},
-			wantIn: []string{"run", "-d", "-i", "--name", "test-agent", "scion-agent:latest", "gemini", "--prompt-interactive", "hello"},
+			wantIn: []string{"run", "-d", "-i", "--name", "test-agent", "scion-agent:latest", "tmux", "new-session", "-s", "scion"},
 		},
 		{
 			name: "workspace and home",
@@ -88,20 +88,18 @@ func TestBuildCommonRunArgs(t *testing.T) {
 			wantOut: []string{"--prompt-interactive"},
 		},
 		{
-			name: "labels and tmux",
+			name: "labels",
 			config: RunConfig{
 				Harness:      &harness.GeminiCLI{},
 				Name: "test-agent",
 				Labels: map[string]string{
 					"foo": "bar",
 				},
-				UseTmux: true,
 				Image:   "scion-agent:latest",
 				Task:    "hello",
 			},
 			wantIn: []string{
 				"--label", "foo=bar",
-				"--label", "scion.tmux=true",
 				"tmux", "new-session", "-s", "scion",
 			},
 		},
@@ -168,17 +166,15 @@ func TestBuildCommonRunArgs(t *testing.T) {
 			},
 			wantIn: []string{
 				"-e FOO=BAR",
-				"gemini --yolo --resume",
-				"--prompt-interactive hello",
+				"tmux new-session -s scion gemini --yolo --resume --prompt-interactive hello",
 			},
 		},
 		{
-			name: "resume and tmux",
+			name: "resume with tmux",
 			config: RunConfig{
 				Harness:      &harness.GeminiCLI{},
 				Name:    "test-agent",
 				Image:   "scion-agent:latest",
-				UseTmux: true,
 				Task:    "hello",
 				Resume:  true,
 			},

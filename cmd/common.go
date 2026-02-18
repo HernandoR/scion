@@ -341,12 +341,10 @@ func RunAgent(cmd *cobra.Command, args []string, resume bool) error {
 
 		// Wait for the container to be ready before attaching.
 		// After container start, sciontool init needs time to set up the user,
-		// run pre-start hooks, and launch the child process. For tmux containers,
-		// the tmux session must exist before we can attach.
-		if info.Labels["scion.tmux"] == "true" {
-			if err := waitForTmuxSession(rt, agentName); err != nil {
-				return err
-			}
+		// run pre-start hooks, and launch the child process. The tmux session
+		// must exist before we can attach.
+		if err := waitForTmuxSession(rt, agentName); err != nil {
+			return err
 		}
 
 		return rt.Attach(context.Background(), agentName)

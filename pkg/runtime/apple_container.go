@@ -237,11 +237,7 @@ func (r *AppleContainerRuntime) Attach(ctx context.Context, id string) error {
 		return fmt.Errorf("agent '%s' is not running (status: %s). Use 'scion start %s' to resume it.", id, a.ContainerStatus, id)
 	}
 
-	if a.Labels["scion.tmux"] == "true" {
-		return runInteractiveCommand(r.Command, "exec", "-it", "--user", "scion", a.ContainerID, "tmux", "attach", "-t", "scion")
-	}
-
-	return fmt.Errorf("apple container runtime does not support 'attach' without tmux")
+	return runInteractiveCommand(r.Command, "exec", "-it", "--user", "scion", a.ContainerID, "tmux", "attach", "-t", "scion")
 }
 
 func (r *AppleContainerRuntime) ImageExists(ctx context.Context, image string) (bool, error) {

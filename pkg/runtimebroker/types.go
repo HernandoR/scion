@@ -113,7 +113,6 @@ type AgentConfig struct {
 	Workspace string                 `json:"workspace,omitempty"`
 	RepoRoot  string                 `json:"repoRoot,omitempty"`
 	Harness   string                 `json:"harness,omitempty"`
-	UseTmux   bool                   `json:"useTmux,omitempty"`
 	Env       []string               `json:"env,omitempty"`
 	Volumes   []api.VolumeMount      `json:"volumes,omitempty"`
 	Resources *api.K8sResources      `json:"resources,omitempty"`
@@ -187,7 +186,6 @@ type CreateAgentConfig struct {
 	Labels      map[string]string     `json:"labels,omitempty"`
 	Annotations map[string]string     `json:"annotations,omitempty"`
 	Harness     string                `json:"harness,omitempty"`
-	UseTmux     bool                  `json:"useTmux,omitempty"`
 	Task        string                `json:"task,omitempty"`
 	CommandArgs []string              `json:"commandArgs,omitempty"`
 	Kubernetes  *api.KubernetesConfig `json:"kubernetes,omitempty"`
