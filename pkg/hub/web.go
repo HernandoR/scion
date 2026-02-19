@@ -106,6 +106,7 @@ type WebServer struct {
 	oauthService *OAuthService
 	store        store.Store
 	userTokenSvc *UserTokenService
+	events       *ChannelEventPublisher // nil when no publisher configured
 }
 
 // spaShellTemplate is the Go html/template for the SPA shell page.
@@ -352,6 +353,11 @@ func (ws *WebServer) SetUserTokenService(svc *UserTokenService) {
 	ws.userTokenSvc = svc
 }
 
+// SetEventPublisher sets the event publisher for real-time SSE streaming.
+func (ws *WebServer) SetEventPublisher(pub *ChannelEventPublisher) {
+	ws.events = pub
+}
+
 // registerRoutes sets up the web server routes.
 func (ws *WebServer) registerRoutes() {
 	ws.mux.HandleFunc("/healthz", ws.handleHealthz)
@@ -362,6 +368,8 @@ func (ws *WebServer) registerRoutes() {
 	ws.mux.HandleFunc("/auth/logout", ws.handleLogout)
 	ws.mux.HandleFunc("/auth/me", ws.handleAuthMe)
 	ws.mux.HandleFunc("/auth/debug", ws.handleAuthDebug)
+	// SSE event stream (protected by session auth middleware)
+	ws.mux.HandleFunc("/events", ws.handleSSE)
 	// SPA catch-all (protected by session auth middleware)
 	ws.mux.HandleFunc("/", ws.spaHandler())
 }
@@ -446,6 +454,108 @@ func (ws *WebServer) spaHandler() http.HandlerFunc {
 			slog.Error("Failed to render SPA shell", "error", err)
 		}
 	}
+}
+
+// handleSSE serves the Server-Sent Events endpoint. It subscribes to the
+// in-process ChannelEventPublisher and streams matching events to the browser.
+// Route: GET /events?sub=<pattern>&sub=<pattern>...
+func (ws *WebServer) handleSSE(w http.ResponseWriter, r *http.Request) {
+	if ws.events == nil {
+		http.Error(w, "event streaming not configured", http.StatusServiceUnavailable)
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	subjects := r.URL.Query()["sub"]
+	if len(subjects) == 0 {
+		http.Error(w, "at least one sub parameter required", http.StatusBadRequest)
+		return
+	}
+
+	if errMsg := validateSSESubjects(subjects); errMsg != "" {
+		http.Error(w, errMsg, http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	flusher.Flush()
+
+	ch, unsubscribe := ws.events.Subscribe(subjects...)
+	defer unsubscribe()
+
+	eventID := 0
+	heartbeat := time.NewTicker(30 * time.Second)
+	defer heartbeat.Stop()
+
+	for {
+		select {
+		case evt, ok := <-ch:
+			if !ok {
+				// Publisher closed
+				return
+			}
+			eventID++
+			fmt.Fprintf(w, "id: %d\nevent: %s\ndata: %s\n\n",
+				eventID, evt.Subject, evt.Data)
+			flusher.Flush()
+		case <-heartbeat.C:
+			fmt.Fprintf(w, ":heartbeat %d\n\n", time.Now().UnixMilli())
+			flusher.Flush()
+		case <-r.Context().Done():
+			return
+		}
+	}
+}
+
+// validateSSESubjects validates the subject patterns for SSE subscriptions.
+// Returns an error message if invalid, or empty string if all subjects are valid.
+func validateSSESubjects(subjects []string) string {
+	for _, sub := range subjects {
+		if sub == "" {
+			return "subject pattern must not be empty"
+		}
+		if len(sub) > 256 {
+			return fmt.Sprintf("subject pattern too long: %d characters (max 256)", len(sub))
+		}
+		tokens := strings.Split(sub, ".")
+		for i, token := range tokens {
+			if token == "" {
+				return fmt.Sprintf("invalid subject %q: empty token", sub)
+			}
+			// '>' must be the last token
+			if token == ">" && i != len(tokens)-1 {
+				return fmt.Sprintf("invalid subject %q: '>' must be the last token", sub)
+			}
+			// '*' must be a complete token (not mixed like "foo*bar")
+			if strings.Contains(token, "*") && token != "*" {
+				return fmt.Sprintf("invalid subject %q: '*' must be a complete token", sub)
+			}
+			// Check for allowed characters
+			for _, c := range token {
+				if !isAllowedSubjectChar(c) {
+					return fmt.Sprintf("invalid subject %q: invalid character %q", sub, string(c))
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// isAllowedSubjectChar returns true if the character is valid in a subject token.
+func isAllowedSubjectChar(c rune) bool {
+	return (c >= 'a' && c <= 'z') ||
+		(c >= 'A' && c <= 'Z') ||
+		(c >= '0' && c <= '9') ||
+		c == '-' || c == '_' ||
+		c == '*' || c == '>'
 }
 
 // isPublicRoute returns true for routes that do not require authentication.

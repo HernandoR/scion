@@ -663,8 +663,13 @@ func runServerStart(cmd *cobra.Command, args []string) error {
 		}
 		webSrv := hub.NewWebServer(webCfg)
 
+		// Create shared event publisher for real-time SSE
+		eventPub := hub.NewChannelEventPublisher()
+		webSrv.SetEventPublisher(eventPub)
+
 		// Wire Hub services into WebServer if Hub is enabled
 		if hubSrv != nil {
+			hubSrv.SetEventPublisher(eventPub) // Hub publishes events
 			webSrv.SetOAuthService(hubSrv.GetOAuthService())
 			webSrv.SetStore(hubSrv.GetStore())
 			webSrv.SetUserTokenService(hubSrv.GetUserTokenService())

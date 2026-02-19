@@ -818,4 +818,168 @@ func TestSetters(t *testing.T) {
 	// SetStore with nil (should not panic)
 	ws.SetStore(nil)
 	assert.Nil(t, ws.store)
+
+	// SetEventPublisher
+	pub := NewChannelEventPublisher()
+	ws.SetEventPublisher(pub)
+	assert.Equal(t, pub, ws.events)
+}
+
+// --- SSE Endpoint Tests ---
+
+func TestSSEHandler_RequiresSubParam(t *testing.T) {
+	ws := newDevAuthWebServer(t)
+	pub := NewChannelEventPublisher()
+	ws.SetEventPublisher(pub)
+	t.Cleanup(func() { pub.Close() })
+
+	req := httptest.NewRequest("GET", "/events", nil)
+	rec := httptest.NewRecorder()
+	ws.Handler().ServeHTTP(rec, req)
+
+	resp := rec.Result()
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+
+	body, _ := io.ReadAll(resp.Body)
+	assert.Contains(t, string(body), "at least one sub parameter required")
+}
+
+func TestSSEHandler_InvalidSubject(t *testing.T) {
+	ws := newDevAuthWebServer(t)
+	pub := NewChannelEventPublisher()
+	ws.SetEventPublisher(pub)
+	t.Cleanup(func() { pub.Close() })
+
+	req := httptest.NewRequest("GET", "/events?sub=foo..bar", nil)
+	rec := httptest.NewRecorder()
+	ws.Handler().ServeHTTP(rec, req)
+
+	resp := rec.Result()
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+
+	body, _ := io.ReadAll(resp.Body)
+	assert.Contains(t, string(body), "empty token")
+}
+
+func TestSSEHandler_NoPublisher(t *testing.T) {
+	ws := newDevAuthWebServer(t)
+	// Don't set publisher — events field remains nil
+
+	req := httptest.NewRequest("GET", "/events?sub=grove.test.>", nil)
+	rec := httptest.NewRecorder()
+	ws.Handler().ServeHTTP(rec, req)
+
+	resp := rec.Result()
+	assert.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
+
+	body, _ := io.ReadAll(resp.Body)
+	assert.Contains(t, string(body), "event streaming not configured")
+}
+
+func TestSSEHandler_Headers(t *testing.T) {
+	ws := newDevAuthWebServer(t)
+	pub := NewChannelEventPublisher()
+	ws.SetEventPublisher(pub)
+	t.Cleanup(func() { pub.Close() })
+
+	// Use a test server so we get a real connection that supports streaming
+	ts := httptest.NewServer(ws.Handler())
+	defer ts.Close()
+
+	// Make a request that will establish the SSE connection
+	resp, err := http.Get(ts.URL + "/events?sub=grove.test.>")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, "text/event-stream", resp.Header.Get("Content-Type"))
+	assert.Equal(t, "no-cache", resp.Header.Get("Cache-Control"))
+	assert.Equal(t, "no", resp.Header.Get("X-Accel-Buffering"))
+}
+
+func TestSSEHandler_EventDelivery(t *testing.T) {
+	ws := newDevAuthWebServer(t)
+	pub := NewChannelEventPublisher()
+	ws.SetEventPublisher(pub)
+	t.Cleanup(func() { pub.Close() })
+
+	ts := httptest.NewServer(ws.Handler())
+	defer ts.Close()
+
+	// Start SSE connection in background
+	resp, err := http.Get(ts.URL + "/events?sub=grove.test123.>")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	// Publish an event
+	pub.publish("grove.test123.agent.status", AgentStatusEvent{
+		AgentID: "agent-1",
+		GroveID: "test123",
+		Status:  "running",
+	})
+
+	// Read the SSE frame from the response
+	buf := make([]byte, 4096)
+	n, err := resp.Body.Read(buf)
+	require.NoError(t, err)
+	frame := string(buf[:n])
+
+	// Verify SSE frame format
+	assert.Contains(t, frame, "id: 1\n")
+	assert.Contains(t, frame, "event: grove.test123.agent.status\n")
+	assert.Contains(t, frame, "data: ")
+	assert.Contains(t, frame, `"agentId":"agent-1"`)
+	assert.Contains(t, frame, `"status":"running"`)
+}
+
+func TestSSEHandler_SubjectValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		subject string
+		valid   bool
+	}{
+		{"simple subject", "grove.abc.status", true},
+		{"wildcard star", "grove.*.status", true},
+		{"wildcard gt", "grove.abc.>", true},
+		{"single token", "grove", true},
+		{"with hyphens", "grove.my-grove.status", true},
+		{"with underscores", "grove.my_grove.status", true},
+		{"empty", "", false},
+		{"empty token", "grove..status", false},
+		{"gt not last", "grove.>.status", false},
+		{"star mixed", "grove.foo*bar.status", false},
+		{"invalid char space", "grove.foo bar", false},
+		{"invalid char slash", "grove/bar", false},
+		{"too long", strings.Repeat("a", 257), false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := validateSSESubjects([]string{tt.subject})
+			if tt.valid {
+				assert.Empty(t, result, "expected valid subject %q", tt.subject)
+			} else {
+				assert.NotEmpty(t, result, "expected invalid subject %q", tt.subject)
+			}
+		})
+	}
+}
+
+func TestSSEHandler_RequiresAuth(t *testing.T) {
+	// Without dev-auth, the SSE endpoint should require authentication
+	ws := newTestWebServer(t, WebServerConfig{})
+	pub := NewChannelEventPublisher()
+	ws.SetEventPublisher(pub)
+	t.Cleanup(func() { pub.Close() })
+
+	// API-style request (no Accept: text/html) should get 401
+	req := httptest.NewRequest("GET", "/events?sub=grove.test.>", nil)
+	req.Header.Set("Accept", "application/json")
+	rec := httptest.NewRecorder()
+	ws.Handler().ServeHTTP(rec, req)
+
+	resp := rec.Result()
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 }
