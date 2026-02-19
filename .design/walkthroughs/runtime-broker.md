@@ -832,4 +832,4 @@ These endpoints scope agent operations to a specific grove. The `{groveId}` supp
 | `/api/v1/groves/{groveId}/agents/{agentId}` | DELETE | Delete agent in grove |
 | `/api/v1/groves/{groveId}/agents/{agentId}/status` | POST | Update agent status |
 
-See `hub-api-testing-walkthrough.md` for full Hub API documentation.
+See `hub-api.md` (in this directory) for full Hub API documentation.

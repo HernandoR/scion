@@ -39,7 +39,7 @@ The hosted architecture milestone requires workspace synchronization between rem
 - The CLI needs to push local changes to running agents
 - The existing local sync (`cmd/sync.go`) uses tar-based or mutagen sync, which doesn't work across the Hub
 
-See [milestone-walkthrough.md](milestone-walkthrough.md) Section 2.3 - workspace sync is the **only remaining blocker** for the end-to-end milestone.
+See [hosted-e2e.md](../walkthroughs/hosted-e2e.md) Section 2.3 - workspace sync is the **only remaining blocker** for the end-to-end milestone.
 
 ### 1.2 Current State
 
@@ -1516,7 +1516,7 @@ All open questions have been resolved with the following decisions:
   - [x] Agent not running
   - [x] Storage unavailable
   - [x] Partial upload/download recovery
-- [x] Update `milestone-walkthrough.md`:
+- [x] Update `hosted-e2e walkthrough`:
   - [x] Mark Scenario 4 complete
   - [x] Update success criteria (7/7)
 - [x] Update test setup commands in walkthrough
@@ -1569,7 +1569,7 @@ All open questions have been resolved with the following decisions:
 
 | Document | Relevance |
 |----------|-----------|
-| [milestone-walkthrough.md](milestone-walkthrough.md) | Milestone requirements (Scenario 4) |
+| [hosted-e2e.md](../walkthroughs/hosted-e2e.md) | Milestone requirements (Scenario 4) |
 | [hosted-templates.md](hosted-templates.md) | Template upload/download pattern (Sections 2, 5) |
 | [hosted-architecture.md](hosted-architecture.md) | Overall architecture context |
 | [runtimebroker-websocket.md](runtimebroker-websocket.md) | Control channel for NAT traversal (Section 3) |

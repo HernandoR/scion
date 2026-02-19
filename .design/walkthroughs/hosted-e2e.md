@@ -480,5 +480,5 @@ All scenarios work with Hub and Runtime Broker running as separate processes.
 | [runtimebroker-websocket.md](runtimebroker-websocket.md) | WebSocket/PTY design |
 | [hub-api.md](hub-api.md) | Hub API specification |
 | [runtime-broker-api.md](runtime-broker-api.md) | Runtime Broker API specification |
-| [hub-api-testing-walkthrough.md](hub-api-testing-walkthrough.md) | Hub API testing guide |
-| [runtime-broker-testing-walkthrough.md](runtime-broker-testing-walkthrough.md) | Runtime Broker testing guide |
+| [hub-api.md](hub-api.md) | Hub API testing guide |
+| [runtime-broker.md](runtime-broker.md) | Runtime Broker testing guide |
