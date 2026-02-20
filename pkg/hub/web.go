@@ -263,7 +263,7 @@ var spaShellTemplate = `<!DOCTYPE html>
     </script>
 </head>
 <body>
-    <div id="app">{{if .IsLoginPage}}<scion-login-page{{if .GoogleEnabled}} googleEnabled{{end}}{{if .GitHubEnabled}} githubEnabled{{end}}></scion-login-page>{{else}}<scion-app></scion-app>{{end}}</div>
+    <div id="app">{{if .IsLoginPage}}<scion-login-page></scion-login-page>{{else}}<scion-app></scion-app>{{end}}</div>
 
     <!-- Client entry point -->
     <script type="module" src="/assets/main.js"></script>
@@ -274,8 +274,6 @@ var spaShellTemplate = `<!DOCTYPE html>
 type spaShellData struct {
 	ShoelaceVersion string
 	IsLoginPage     bool
-	GoogleEnabled   bool
-	GitHubEnabled   bool
 }
 
 // NewWebServer creates a new web frontend server.
@@ -371,6 +369,7 @@ func (ws *WebServer) registerRoutes() {
 	ws.mux.HandleFunc("/auth/callback/", ws.handleOAuthCallback)
 	ws.mux.HandleFunc("/auth/logout", ws.handleLogout)
 	ws.mux.HandleFunc("/auth/me", ws.handleAuthMe)
+	ws.mux.HandleFunc("/auth/providers", ws.handleAuthProviders)
 	ws.mux.HandleFunc("/auth/debug", ws.handleAuthDebug)
 	// SSE event stream (protected by session auth middleware)
 	ws.mux.HandleFunc("/events", ws.handleSSE)
@@ -451,14 +450,9 @@ func (ws *WebServer) spaHandler() http.HandlerFunc {
 			return
 		}
 
-		isLogin := r.URL.Path == "/login"
 		data := spaShellData{
 			ShoelaceVersion: shoelaceVersion,
-			IsLoginPage:     isLogin,
-		}
-		if isLogin && ws.oauthService != nil {
-			data.GoogleEnabled = ws.oauthService.IsProviderConfiguredForClient(OAuthClientTypeWeb, "google")
-			data.GitHubEnabled = ws.oauthService.IsProviderConfiguredForClient(OAuthClientTypeWeb, "github")
+			IsLoginPage:     r.URL.Path == "/login",
 		}
 		if err := ws.shellTmpl.Execute(w, data); err != nil {
 			slog.Error("Failed to render SPA shell", "error", err)
@@ -967,6 +961,21 @@ func (ws *WebServer) handleAuthMe(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(user)
+}
+
+// handleAuthProviders returns which OAuth providers are enabled for web login.
+// Route: GET /auth/providers
+func (ws *WebServer) handleAuthProviders(w http.ResponseWriter, r *http.Request) {
+	resp := map[string]bool{
+		"google": false,
+		"github": false,
+	}
+	if ws.oauthService != nil {
+		resp["google"] = ws.oauthService.IsProviderConfiguredForClient(OAuthClientTypeWeb, "google")
+		resp["github"] = ws.oauthService.IsProviderConfiguredForClient(OAuthClientTypeWeb, "github")
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
 }
 
 // handleAuthDebug returns session debug info (debug mode only).

@@ -48,16 +48,22 @@ export class ScionLoginPage extends LitElement {
   returnTo = '/';
 
   /**
-   * Whether Google OAuth is configured
+   * Whether Google OAuth is configured (fetched from server)
    */
-  @property({ type: Boolean })
-  googleEnabled = false;
+  @state()
+  private googleEnabled = false;
 
   /**
-   * Whether GitHub OAuth is configured
+   * Whether GitHub OAuth is configured (fetched from server)
    */
-  @property({ type: Boolean })
-  githubEnabled = false;
+  @state()
+  private githubEnabled = false;
+
+  /**
+   * Whether provider config is still loading
+   */
+  @state()
+  private _providersLoading = true;
 
   /**
    * Loading state during OAuth redirect
@@ -295,9 +301,31 @@ export class ScionLoginPage extends LitElement {
     if (returnTo) {
       this.returnTo = returnTo;
     }
+
+    // Fetch available OAuth providers from the server
+    void this.fetchProviders();
+  }
+
+  private async fetchProviders(): Promise<void> {
+    try {
+      const resp = await fetch('/auth/providers');
+      if (resp.ok) {
+        const data = (await resp.json()) as Record<string, boolean>;
+        this.googleEnabled = !!data.google;
+        this.githubEnabled = !!data.github;
+      }
+    } catch {
+      // If the fetch fails, leave providers disabled
+    } finally {
+      this._providersLoading = false;
+    }
   }
 
   override render() {
+    if (this._providersLoading) {
+      return this.renderLoading();
+    }
+
     const providers = this.getProviders();
     const hasProviders = providers.some((p) => p.available);
 

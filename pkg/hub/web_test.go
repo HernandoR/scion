@@ -1030,10 +1030,11 @@ func TestNonLoginPageRendersAppComponent(t *testing.T) {
 	assert.NotContains(t, html, "<scion-login-page")
 }
 
-func TestLoginPageOAuthAttributes(t *testing.T) {
+func TestLoginPageNoOAuthAttributes(t *testing.T) {
+	// After the provider-detection refactor, the login page template no longer
+	// injects OAuth attributes — the component fetches them via /auth/providers.
 	ws := newTestWebServer(t, WebServerConfig{})
 
-	// Set up OAuth service with Google configured for web
 	oauthSvc := NewOAuthService(OAuthConfig{
 		Web: OAuthClientConfig{
 			Google: OAuthProviderConfig{
@@ -1054,6 +1055,50 @@ func TestLoginPageOAuthAttributes(t *testing.T) {
 	html := string(body)
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	assert.Contains(t, html, "googleEnabled")
+	assert.Contains(t, html, "<scion-login-page></scion-login-page>")
+	assert.NotContains(t, html, "googleEnabled")
 	assert.NotContains(t, html, "githubEnabled")
+}
+
+func TestAuthProviders_NoOAuthService(t *testing.T) {
+	ws := newTestWebServer(t, WebServerConfig{})
+
+	req := httptest.NewRequest("GET", "/auth/providers", nil)
+	rec := httptest.NewRecorder()
+	ws.Handler().ServeHTTP(rec, req)
+
+	resp := rec.Result()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	body, _ := io.ReadAll(resp.Body)
+	var result map[string]bool
+	require.NoError(t, json.Unmarshal(body, &result))
+	assert.False(t, result["google"])
+	assert.False(t, result["github"])
+}
+
+func TestAuthProviders_WithProviders(t *testing.T) {
+	ws := newTestWebServer(t, WebServerConfig{})
+	ws.SetOAuthService(NewOAuthService(OAuthConfig{
+		Web: OAuthClientConfig{
+			Google: OAuthProviderConfig{
+				ClientID:     "g-id",
+				ClientSecret: "g-secret",
+			},
+		},
+	}))
+
+	req := httptest.NewRequest("GET", "/auth/providers", nil)
+	rec := httptest.NewRecorder()
+	ws.Handler().ServeHTTP(rec, req)
+
+	resp := rec.Result()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, "application/json", resp.Header.Get("Content-Type"))
+
+	body, _ := io.ReadAll(resp.Body)
+	var result map[string]bool
+	require.NoError(t, json.Unmarshal(body, &result))
+	assert.True(t, result["google"])
+	assert.False(t, result["github"])
 }
