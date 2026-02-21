@@ -12,7 +12,7 @@ LDFLAGS     := $(shell ./hack/version.sh)
 .PHONY: all build install test test-fast vet lint web clean help
 
 ## all: Build the Go binary and the web frontend
-all: build web
+all: install web
 
 ## build: Compile the scion binary into ./build/
 build:
@@ -25,7 +25,7 @@ build:
 install: build
 	@echo "Installing $(BINARY) to $(INSTALL_DIR)..."
 	@mkdir -p $(INSTALL_DIR)
-	@cp $(BUILD_DIR)/$(BINARY) $(INSTALL_DIR)/$(BINARY)
+	@install $(BUILD_DIR)/$(BINARY) $(INSTALL_DIR)/$(BINARY)
 	@echo "Installed: $(INSTALL_DIR)/$(BINARY)"
 
 ## test: Run all tests
