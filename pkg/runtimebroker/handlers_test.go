@@ -482,7 +482,7 @@ type provisionCapturingManager struct {
 func (m *provisionCapturingManager) Provision(ctx context.Context, opts api.StartOptions) (*api.ScionConfig, error) {
 	m.provisionCalled = true
 	m.lastOpts = opts
-	return &api.ScionConfig{Harness: "claude"}, nil
+	return &api.ScionConfig{Harness: "claude", HarnessConfig: "claude"}, nil
 }
 
 func (m *provisionCapturingManager) Start(ctx context.Context, opts api.StartOptions) (*api.AgentInfo, error) {
@@ -554,6 +554,46 @@ func TestCreateAgentProvisionOnly(t *testing.T) {
 	}
 	if resp.Agent.Slug != "provisioned-agent" {
 		t.Errorf("expected slug 'provisioned-agent', got '%s'", resp.Agent.Slug)
+	}
+}
+
+func TestCreateAgentProvisionOnlyHarnessConfig(t *testing.T) {
+	srv, _ := newTestServerWithProvisionCapture()
+
+	body := `{
+		"name": "harness-agent",
+		"id": "agent-uuid-hc",
+		"slug": "harness-agent",
+		"provisionOnly": true,
+		"config": {"template": "claude", "harness": "claude"}
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agents", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusCreated, w.Code, w.Body.String())
+	}
+
+	var resp CreateAgentResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if resp.Agent == nil {
+		t.Fatal("expected agent to be present")
+	}
+
+	// HarnessConfig should be populated from Provision's ScionConfig
+	if resp.Agent.HarnessConfig != "claude" {
+		t.Errorf("expected HarnessConfig 'claude', got '%s'", resp.Agent.HarnessConfig)
+	}
+
+	// Template should NOT be overwritten with the harness name
+	if resp.Agent.Template == "claude" {
+		t.Error("Template should not be overwritten with harness name")
 	}
 }
 

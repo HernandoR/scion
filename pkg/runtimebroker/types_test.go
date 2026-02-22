@@ -114,3 +114,20 @@ func TestAgentInfoToResponse(t *testing.T) {
 		})
 	}
 }
+
+func TestAgentInfoToResponseHarnessConfig(t *testing.T) {
+	info := api.AgentInfo{
+		Name:          "agent-harness",
+		Status:        "running",
+		Template:      "default",
+		HarnessConfig: "gemini",
+	}
+
+	resp := AgentInfoToResponse(info)
+	if resp.HarnessConfig != "gemini" {
+		t.Errorf("HarnessConfig = %q, want %q", resp.HarnessConfig, "gemini")
+	}
+	if resp.Template != "default" {
+		t.Errorf("Template = %q, want %q", resp.Template, "default")
+	}
+}

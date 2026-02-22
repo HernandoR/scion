@@ -118,7 +118,7 @@ func TestDisplayAgentsLocalMode(t *testing.T) {
 	}
 
 	header := lines[0]
-	for _, col := range []string{"NAME", "TEMPLATE", "HARNESS", "RUNTIME", "GROVE", "STATUS", "CONTAINER", "LAST EVENT"} {
+	for _, col := range []string{"NAME", "TEMPLATE", "HARNESS-CFG", "RUNTIME", "GROVE", "STATUS", "CONTAINER", "LAST EVENT"} {
 		if !strings.Contains(header, col) {
 			t.Errorf("header missing column %q: %s", col, header)
 		}
@@ -176,7 +176,7 @@ func TestDisplayAgentsHubMode(t *testing.T) {
 
 	header := lines[0]
 	// Hub mode should have BROKER column
-	for _, col := range []string{"NAME", "TEMPLATE", "HARNESS", "RUNTIME", "GROVE", "BROKER", "STATUS", "CONTAINER", "LAST EVENT"} {
+	for _, col := range []string{"NAME", "TEMPLATE", "HARNESS-CFG", "RUNTIME", "GROVE", "BROKER", "STATUS", "CONTAINER", "LAST EVENT"} {
 		if !strings.Contains(header, col) {
 			t.Errorf("hub mode header missing column %q: %s", col, header)
 		}

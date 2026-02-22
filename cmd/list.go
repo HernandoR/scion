@@ -263,9 +263,9 @@ func displayAgents(agents []api.AgentInfo, all bool, hubMode bool) error {
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	if hubMode {
-		fmt.Fprintln(w, "NAME\tTEMPLATE\tHARNESS\tRUNTIME\tGROVE\tBROKER\tSTATUS\tCONTAINER\tLAST EVENT")
+		fmt.Fprintln(w, "NAME\tTEMPLATE\tHARNESS-CFG\tRUNTIME\tGROVE\tBROKER\tSTATUS\tCONTAINER\tLAST EVENT")
 	} else {
-		fmt.Fprintln(w, "NAME\tTEMPLATE\tHARNESS\tRUNTIME\tGROVE\tSTATUS\tCONTAINER\tLAST EVENT")
+		fmt.Fprintln(w, "NAME\tTEMPLATE\tHARNESS-CFG\tRUNTIME\tGROVE\tSTATUS\tCONTAINER\tLAST EVENT")
 	}
 	for _, a := range agents {
 		agentStatus := a.Status

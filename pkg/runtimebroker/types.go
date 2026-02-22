@@ -91,8 +91,9 @@ type AgentResponse struct {
 	Slug            string            `json:"slug"`                  // URL-safe identifier
 	ContainerID     string            `json:"containerId,omitempty"` // Runtime container ID
 	Name            string            `json:"name"`
-	Template        string            `json:"template,omitempty"`  // Template name used
-	RuntimeType     string            `json:"runtime,omitempty"`   // Runtime type (docker, kubernetes, apple)
+	Template        string            `json:"template,omitempty"`        // Template name used
+	HarnessConfig   string            `json:"harnessConfig,omitempty"`   // Resolved harness-config name
+	RuntimeType     string            `json:"runtime,omitempty"`         // Runtime type (docker, kubernetes, apple)
 	GroveID         string            `json:"groveId,omitempty"`
 	UserID          string            `json:"userId,omitempty"`
 	Status          string            `json:"status"`
@@ -295,6 +296,7 @@ func AgentInfoToResponse(info api.AgentInfo) AgentResponse {
 		ContainerID:     info.ContainerID,
 		Name:            info.Name,
 		Template:        info.Template,
+		HarnessConfig:   info.HarnessConfig,
 		RuntimeType:     info.Runtime,
 		GroveID:         info.GroveID,
 		Status:          status,

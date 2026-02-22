@@ -615,9 +615,12 @@ func (d *HTTPAgentDispatcher) applyBrokerResponse(agent *store.Agent, resp *Remo
 		if resp.Agent.ID != "" {
 			agent.RuntimeState = "container:" + resp.Agent.ID
 		}
-		// Capture template and runtime from the broker response
+		// Capture template, harness, and runtime from the broker response
 		if resp.Agent.Template != "" {
 			agent.Template = resp.Agent.Template
+		}
+		if resp.Agent.HarnessConfig != "" && agent.AppliedConfig != nil {
+			agent.AppliedConfig.Harness = resp.Agent.HarnessConfig
 		}
 		if resp.Agent.Runtime != "" {
 			agent.Runtime = resp.Agent.Runtime

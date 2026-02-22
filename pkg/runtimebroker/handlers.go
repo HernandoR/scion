@@ -513,7 +513,7 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 			Status: AgentStatusCreated,
 		}
 		if cfg != nil {
-			agentResp.Template = cfg.Harness
+			agentResp.HarnessConfig = cfg.HarnessConfig
 		}
 		if s.runtime != nil {
 			agentResp.RuntimeType = s.runtime.Name()
