@@ -104,6 +104,8 @@ Environment="GOOGLE_CLOUD_PROJECT=deploy-demo-test"
 Environment="SCION_OTEL_ENDPOINT=cloudtrace.googleapis.com:443"
 Environment="SCION_OTEL_LOG_ENABLED=true"
 ```
+<!--  feedback: prefer to manage these in a hub.env file. Document this and remove from the gce-start-hub.sh script. -->
+
 
 ### 2.2 Retrofit an existing instance
 
@@ -190,6 +192,7 @@ telemetry:
 EOF
 '
 ```
+<!-- feedback, I'm confused on how we left the design to allow the sciontool to be authenticated to the cloud telemetry ingest endpoints, I feel like that might be an unsolved problem? -->
 
 ### 3.2 Verify env var injection
 
