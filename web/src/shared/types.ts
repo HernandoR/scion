@@ -146,6 +146,23 @@ export type AgentStatus =
   | 'waiting_for_input'
   | 'completed';
 
+/** Statuses where the agent container has not yet started or has terminated. */
+const TERMINAL_UNAVAILABLE_STATUSES: ReadonlySet<AgentStatus> = new Set([
+  'provisioning',
+  'cloning',
+  'stopped',
+  'completed',
+]);
+
+/**
+ * Whether an agent's terminal is accessible.
+ * The terminal is available whenever the container is running — i.e. any
+ * status *except* pre-start (provisioning/cloning) or terminated (stopped/completed).
+ */
+export function isTerminalAvailable(status: AgentStatus): boolean {
+  return !TERMINAL_UNAVAILABLE_STATUSES.has(status);
+}
+
 /**
  * Agent information from the Hub API
  */

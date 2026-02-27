@@ -24,7 +24,7 @@ import { LitElement, html, css, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 
 import type { PageData, Agent, Grove } from '../../shared/types.js';
-import { can } from '../../shared/types.js';
+import { can, isTerminalAvailable } from '../../shared/types.js';
 import { apiFetch } from '../../client/api.js';
 import { stateManager } from '../../client/state.js';
 import '../shared/status-badge.js';
@@ -690,7 +690,7 @@ export class ScionPageAgentDetail extends LitElement {
           <a
             class="quick-action"
             href="/agents/${this.agentId}/terminal"
-            ?disabled=${this.agent.status !== 'running'}
+            ?disabled=${!isTerminalAvailable(this.agent.status)}
           >
             <sl-icon name="terminal"></sl-icon>
             <span>Open Terminal</span>

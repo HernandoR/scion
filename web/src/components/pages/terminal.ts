@@ -25,6 +25,7 @@ import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 
 import type { PageData, Agent } from '../../shared/types.js';
+import { isTerminalAvailable } from '../../shared/types.js';
 
 // xterm.js imports are client-side only — guarded by typeof check in lifecycle
 // These will be imported dynamically in firstUpdated() since they require DOM APIs
@@ -260,8 +261,8 @@ export class ScionPageTerminal extends LitElement {
       const agent = (await response.json()) as Agent;
       this.agentName = agent.name;
 
-      if (agent.status !== 'running') {
-        this.error = `Agent is ${agent.status}. Terminal is only available when the agent is running.`;
+      if (!isTerminalAvailable(agent.status)) {
+        this.error = `Agent is ${agent.status}. Terminal is not available until the agent has started.`;
         this.loading = false;
         return;
       }
