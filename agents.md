@@ -83,7 +83,7 @@ These terms may be used in shorthand with prompts
 - **hub-broker, combo server** References running the server command with both the hub function and the broker function running in the same invocation.
 - **hub-native, hub-grove** A special variant of a project/grove space, that is created on a hub server for use by agents dispatched from clients. These live in ~/.scion/groves/<hub-grove-name> on any broker that is a provider to the hub grove. This is in contrast to the arbitrary local path on a broker for a linked grove.
 - **agent-home** The directory that gets mounted as the home folder of the container user in the agent container
-
+- **linked-grove** A grove and project folder that pre-existed on a broker machine, and is linked as a hub resource grove for visibility, metadata, and agent management across other brokers that may have such a linked grove. May be based on name or git-URI
 
 ## Project use of the scion cli itself
 Do not commit changes in the project's own `.scion` folder to git as part of committing progress on code and docs. These are managed and committed manually when template defaults are intentionally updated.
