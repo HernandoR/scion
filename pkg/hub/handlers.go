@@ -3629,7 +3629,14 @@ func (s *Server) handleBrokerHeartbeat(w http.ResponseWriter, r *http.Request, i
 			if agentHB.Phase != "" {
 				// Structured path: broker sent Phase/Activity directly
 				statusUpdate.Phase = agentHB.Phase
-				statusUpdate.Activity = agentHB.Activity
+				// Only propagate Activity when it differs from the stored
+				// value. Heartbeats always report the current activity, but
+				// repeating the same value would refresh last_activity_event
+				// on every heartbeat and prevent stalled detection from
+				// ever triggering.
+				if agentHB.Activity != agent.Activity {
+					statusUpdate.Activity = agentHB.Activity
+				}
 			} else {
 				// Legacy path: no structured fields, derive from ContainerStatus
 				// Derive phase from container status to ensure agents

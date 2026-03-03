@@ -28,6 +28,7 @@ import (
 
 	"github.com/ptone/scion-agent/pkg/agent/state"
 	"github.com/ptone/scion-agent/pkg/store"
+	"github.com/ptone/scion-agent/pkg/store/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -2456,6 +2457,102 @@ func TestBrokerHeartbeat_PublishesActivitySSE(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for SSE event from broker heartbeat")
 	}
+}
+
+func TestBrokerHeartbeat_RepeatedActivityDoesNotRefreshLastActivityEvent(t *testing.T) {
+	srv, s := testServer(t)
+	ctx := context.Background()
+
+	// Create grove, broker, and agent
+	grove := &store.Grove{ID: "grove-stall-hb", Name: "Stall HB Grove", Slug: "stall-hb-grove"}
+	require.NoError(t, s.CreateGrove(ctx, grove))
+
+	broker := &store.RuntimeBroker{
+		ID: "broker-stall-hb", Name: "Stall HB Broker", Slug: "stall-hb-broker",
+		Status: store.BrokerStatusOnline,
+	}
+	require.NoError(t, s.CreateRuntimeBroker(ctx, broker))
+
+	agent := &store.Agent{
+		ID: "agent-stall-hb", Slug: "stall-hb-slug", Name: "Stall HB Agent",
+		GroveID: grove.ID, RuntimeBrokerID: broker.ID,
+		Phase: string(state.PhaseRunning),
+	}
+	require.NoError(t, s.CreateAgent(ctx, agent))
+
+	// First heartbeat: set activity to "thinking" — this should set last_activity_event
+	hb1 := brokerHeartbeatRequest{
+		Status: "online",
+		Groves: []brokerGroveHeartbeat{{
+			GroveID:    grove.ID,
+			AgentCount: 1,
+			Agents: []brokerAgentHeartbeat{{
+				Slug:     agent.Slug,
+				Phase:    string(state.PhaseRunning),
+				Activity: "thinking",
+			}},
+		}},
+	}
+	rec := doRequest(t, srv, http.MethodPost, "/api/v1/runtime-brokers/"+broker.ID+"/heartbeat", hb1)
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	// Verify activity was set and record last_activity_event
+	updated, err := s.GetAgent(ctx, agent.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "thinking", updated.Activity)
+	assert.False(t, updated.LastActivityEvent.IsZero(), "last_activity_event should be set after first heartbeat with activity")
+
+	// Backdate last_activity_event to simulate time passing
+	pastTime := time.Now().Add(-10 * time.Minute)
+	db := s.(*sqlite.SQLiteStore).DB()
+	_, err = db.ExecContext(ctx, "UPDATE agents SET last_activity_event = ? WHERE id = ?", pastTime, agent.ID)
+	require.NoError(t, err)
+
+	// Second heartbeat: same activity "thinking" — should NOT refresh last_activity_event
+	hb2 := brokerHeartbeatRequest{
+		Status: "online",
+		Groves: []brokerGroveHeartbeat{{
+			GroveID:    grove.ID,
+			AgentCount: 1,
+			Agents: []brokerAgentHeartbeat{{
+				Slug:     agent.Slug,
+				Phase:    string(state.PhaseRunning),
+				Activity: "thinking",
+			}},
+		}},
+	}
+	rec = doRequest(t, srv, http.MethodPost, "/api/v1/runtime-brokers/"+broker.ID+"/heartbeat", hb2)
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	// Verify last_activity_event was NOT refreshed (still in the past)
+	updated, err = s.GetAgent(ctx, agent.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "thinking", updated.Activity)
+	assert.WithinDuration(t, pastTime, updated.LastActivityEvent, time.Second,
+		"last_activity_event should NOT be refreshed by a heartbeat repeating the same activity")
+
+	// Third heartbeat: different activity "executing" — SHOULD refresh last_activity_event
+	hb3 := brokerHeartbeatRequest{
+		Status: "online",
+		Groves: []brokerGroveHeartbeat{{
+			GroveID:    grove.ID,
+			AgentCount: 1,
+			Agents: []brokerAgentHeartbeat{{
+				Slug:     agent.Slug,
+				Phase:    string(state.PhaseRunning),
+				Activity: "executing",
+			}},
+		}},
+	}
+	rec = doRequest(t, srv, http.MethodPost, "/api/v1/runtime-brokers/"+broker.ID+"/heartbeat", hb3)
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	// Verify last_activity_event WAS refreshed (now recent)
+	updated, err = s.GetAgent(ctx, agent.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "executing", updated.Activity)
+	assert.WithinDuration(t, time.Now(), updated.LastActivityEvent, 5*time.Second,
+		"last_activity_event should be refreshed when activity changes")
 }
 
 func TestCreateAgent_RestartCreatesNotificationSubscription(t *testing.T) {
