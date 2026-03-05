@@ -83,16 +83,46 @@ func (o *OpenCode) InjectAgentInstructions(agentHome string, content []byte) err
 	return os.WriteFile(target, content, 0644)
 }
 
-func (o *OpenCode) RequiredEnvKeys(authSelectedType string) []string {
-	return []string{"ANTHROPIC_API_KEY"}
-}
-
 func (o *OpenCode) ResolveAuth(auth api.AuthConfig) (*api.ResolvedAuth, error) {
-	// Preference order: AnthropicAPIKey → OpenAIAPIKey → OpenCodeAuthFile → error
+	// Explicit selection support
+	if auth.SelectedType != "" {
+		switch auth.SelectedType {
+		case "api-key":
+			key := auth.AnthropicAPIKey
+			if key == "" {
+				key = auth.OpenAIAPIKey
+			}
+			if key == "" {
+				return nil, fmt.Errorf("opencode: auth type %q selected but no API key found; set ANTHROPIC_API_KEY or OPENAI_API_KEY", auth.SelectedType)
+			}
+			envKey := "ANTHROPIC_API_KEY"
+			if auth.AnthropicAPIKey == "" {
+				envKey = "OPENAI_API_KEY"
+			}
+			return &api.ResolvedAuth{
+				Method:  "api-key",
+				EnvVars: map[string]string{envKey: key},
+			}, nil
+		case "auth-file":
+			if auth.OpenCodeAuthFile == "" {
+				return nil, fmt.Errorf("opencode: auth type %q selected but no auth file found; expected ~/.local/share/opencode/auth.json", auth.SelectedType)
+			}
+			return &api.ResolvedAuth{
+				Method: "auth-file",
+				Files: []api.FileMapping{
+					{SourcePath: auth.OpenCodeAuthFile, ContainerPath: "~/.local/share/opencode/auth.json"},
+				},
+			}, nil
+		default:
+			return nil, fmt.Errorf("opencode: unknown auth type %q; valid types are: api-key, auth-file", auth.SelectedType)
+		}
+	}
+
+	// Auto-detect preference order: AnthropicAPIKey → OpenAIAPIKey → OpenCodeAuthFile → error
 
 	if auth.AnthropicAPIKey != "" {
 		return &api.ResolvedAuth{
-			Method: "anthropic-api-key",
+			Method: "api-key",
 			EnvVars: map[string]string{
 				"ANTHROPIC_API_KEY": auth.AnthropicAPIKey,
 			},
@@ -101,7 +131,7 @@ func (o *OpenCode) ResolveAuth(auth api.AuthConfig) (*api.ResolvedAuth, error) {
 
 	if auth.OpenAIAPIKey != "" {
 		return &api.ResolvedAuth{
-			Method: "openai-api-key",
+			Method: "api-key",
 			EnvVars: map[string]string{
 				"OPENAI_API_KEY": auth.OpenAIAPIKey,
 			},
@@ -110,7 +140,7 @@ func (o *OpenCode) ResolveAuth(auth api.AuthConfig) (*api.ResolvedAuth, error) {
 
 	if auth.OpenCodeAuthFile != "" {
 		return &api.ResolvedAuth{
-			Method: "opencode-auth-file",
+			Method: "auth-file",
 			Files: []api.FileMapping{
 				{
 					SourcePath:    auth.OpenCodeAuthFile,

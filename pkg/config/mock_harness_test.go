@@ -53,8 +53,7 @@ func (m *MockHarness) InjectSystemPrompt(agentHome string, content []byte) error
 	}
 	return os.WriteFile(target, content, 0644)
 }
-func (m *MockHarness) GetTelemetryEnv() map[string]string        { return nil }
-func (m *MockHarness) RequiredEnvKeys(authSelectedType string) []string { return nil }
+func (m *MockHarness) GetTelemetryEnv() map[string]string { return nil }
 func (m *MockHarness) ResolveAuth(auth api.AuthConfig) (*api.ResolvedAuth, error) {
 	return &api.ResolvedAuth{Method: "mock"}, nil
 }

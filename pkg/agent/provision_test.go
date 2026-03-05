@@ -512,8 +512,7 @@ func TestProvisionAgentYAMLTemplate(t *testing.T) {
 env:
   TPL_VAR: tpl-val
   GOOGLE_CLOUD_PROJECT: my-project
-gemini:
-  auth_selectedType: vertex-ai
+auth_selectedType: vertex-ai
 `
 	os.WriteFile(filepath.Join(tplDir, "scion-agent.yaml"), []byte(tplConfigYAML), 0644)
 
@@ -540,12 +539,8 @@ gemini:
 	if cfg.Env["GOOGLE_CLOUD_PROJECT"] != "my-project" {
 		t.Errorf("expected env[GOOGLE_CLOUD_PROJECT] = 'my-project', got %q", cfg.Env["GOOGLE_CLOUD_PROJECT"])
 	}
-	if cfg.Gemini == nil || cfg.Gemini.AuthSelectedType != "vertex-ai" {
-		var got string
-		if cfg.Gemini != nil {
-			got = cfg.Gemini.AuthSelectedType
-		}
-		t.Errorf("expected gemini.auth_selectedType = 'vertex-ai', got %q", got)
+	if cfg.AuthSelectedType != "vertex-ai" {
+		t.Errorf("expected auth_selectedType = 'vertex-ai', got %q", cfg.AuthSelectedType)
 	}
 
 	// Verify it was persisted to scion-agent.json

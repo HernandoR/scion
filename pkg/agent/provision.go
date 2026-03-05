@@ -362,9 +362,7 @@ func ProvisionAgent(ctx context.Context, agentName string, templateName string, 
 		hcCfg.Volumes = hcDir.Config.Volumes
 	}
 	if hcDir.Config.AuthSelectedType != "" {
-		hcCfg.Gemini = &api.GeminiConfig{
-			AuthSelectedType: hcDir.Config.AuthSelectedType,
-		}
+		hcCfg.AuthSelectedType = hcDir.Config.AuthSelectedType
 	}
 	// Harness-config is base layer; template config overrides it
 	finalScionCfg = config.MergeScionConfig(hcCfg, finalScionCfg)
@@ -470,9 +468,7 @@ func ProvisionAgent(ctx context.Context, agentName string, templateName string, 
 				settingsCfg.Volumes = hConfig.Volumes
 			}
 			if hConfig.AuthSelectedType != "" {
-				settingsCfg.Gemini = &api.GeminiConfig{
-					AuthSelectedType: hConfig.AuthSelectedType,
-				}
+				settingsCfg.AuthSelectedType = hConfig.AuthSelectedType
 			}
 			if settings.Telemetry != nil {
 				settingsCfg.Telemetry = config.ConvertV1TelemetryToAPI(settings.Telemetry)

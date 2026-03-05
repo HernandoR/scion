@@ -330,22 +330,27 @@ func newTestServerWithHarnessConfig(t *testing.T, harnessConfigName, configYAML,
 	return New(cfg, mgr, rt), mgr, groveDir
 }
 
-// TestEnvGather_HarnessAware tests that the broker detects required env keys
-// from the harness itself, even when no harness_configs.env is declared in settings.
-func TestEnvGather_HarnessAware(t *testing.T) {
-	// No harness_configs in settings, but harness-config dir exists for "claude"
+// TestEnvGather_SettingsEmptyEnv tests that env-gather extracts required keys
+// from settings-defined empty-value env entries.
+func TestEnvGather_SettingsEmptyEnv(t *testing.T) {
+	// Settings declares ANTHROPIC_API_KEY as empty (needs gathering)
 	srv, _, groveDir := newTestServerWithHarnessConfig(t, "claude",
 		"harness: claude\nimage: test-image\nuser: scion\n",
 		`
 schema_version: "1"
+harness_configs:
+  claude:
+    harness: claude
+    env:
+      ANTHROPIC_API_KEY: ""
 profiles:
   default:
     runtime: mock
 `)
 
 	body := `{
-		"name": "test-agent-harness-aware",
-		"id": "agent-uuid-ha",
+		"name": "test-agent-settings-env",
+		"id": "agent-uuid-se",
 		"gatherEnv": true,
 		"grovePath": "` + groveDir + `",
 		"config": {"template": "claude", "profile": "default"}
@@ -379,14 +384,19 @@ profiles:
 	}
 }
 
-// TestEnvGather_GeminiAuthType tests that the gemini harness returns different
-// required keys depending on auth_selected_type.
-func TestEnvGather_GeminiAuthType(t *testing.T) {
-	// Gemini with vertex-ai auth type → needs GOOGLE_CLOUD_PROJECT
+// TestEnvGather_SettingsEmptyEnvVertexAI tests that env-gather extracts
+// project-related keys declared as empty in settings.
+func TestEnvGather_SettingsEmptyEnvVertexAI(t *testing.T) {
+	// Settings declares GOOGLE_CLOUD_PROJECT as empty (needs gathering)
 	srv, _, groveDir := newTestServerWithHarnessConfig(t, "gemini",
 		"harness: gemini\nimage: test-image\nuser: scion\nauth_selected_type: vertex-ai\n",
 		`
 schema_version: "1"
+harness_configs:
+  gemini:
+    harness: gemini
+    env:
+      GOOGLE_CLOUD_PROJECT: ""
 profiles:
   default:
     runtime: mock
@@ -422,16 +432,16 @@ profiles:
 		}
 	}
 	if !found {
-		t.Errorf("expected GOOGLE_CLOUD_PROJECT in needs for vertex-ai auth, got needs=%v required=%v", envReqs.Needs, envReqs.Required)
+		t.Errorf("expected GOOGLE_CLOUD_PROJECT in needs, got needs=%v required=%v", envReqs.Needs, envReqs.Required)
 	}
 }
 
 // TestEnvGather_SettingsAuthTypeOverride tests that a settings profile override
 // for auth_selected_type takes precedence over the on-disk harness-config value.
 func TestEnvGather_SettingsAuthTypeOverride(t *testing.T) {
-	// On-disk config says gemini-api-key, but settings profile overrides to oauth-personal
+	// On-disk config says api-key, but settings profile overrides to auth-file
 	srv, mgr, groveDir := newTestServerWithHarnessConfig(t, "gemini",
-		"harness: gemini\nimage: test-image\nuser: scion\nauth_selected_type: gemini-api-key\n",
+		"harness: gemini\nimage: test-image\nuser: scion\nauth_selected_type: api-key\n",
 		`
 schema_version: "1"
 profiles:
@@ -439,7 +449,7 @@ profiles:
     runtime: mock
     harness_overrides:
       gemini:
-        auth_selected_type: oauth-personal
+        auth_selected_type: auth-file
 `)
 
 	body := `{
@@ -455,9 +465,9 @@ profiles:
 
 	srv.Handler().ServeHTTP(w, req)
 
-	// oauth-personal requires no env keys, so the agent should start immediately
+	// No settings-defined empty env keys, so the agent should start immediately
 	if w.Code != http.StatusCreated {
-		t.Fatalf("expected 201 (oauth-personal needs no env), got %d: %s", w.Code, w.Body.String())
+		t.Fatalf("expected 201 (no required env keys), got %d: %s", w.Code, w.Body.String())
 	}
 
 	if mgr.lastEnv == nil {
@@ -1176,22 +1186,23 @@ profiles:
 	}
 }
 
-// TestEnvGather_HarnessFromConfig tests that the harness name from config.harness
-// is used by env-gather to determine required keys, even when grovePath is empty
-// (fixing the hub-native grove dispatch issue where harness wasn't sent).
+// TestEnvGather_HarnessFromConfig tests that harness-config env declarations
+// drive env-gather even when using config.harnessConfig without an on-disk dir.
 func TestEnvGather_HarnessFromConfig(t *testing.T) {
-	// Create a minimal server with no grove path — simulating hub-native dispatch
-	// where GrovePath isn't available. The harness config name must come from config.HarnessConfig.
+	// Settings declares GEMINI_API_KEY as empty via harness_configs
 	settings := `
 schema_version: "1"
+harness_configs:
+  gemini:
+    harness: gemini
+    env:
+      GEMINI_API_KEY: ""
 profiles:
   default:
     runtime: mock
 `
 	srv, _, groveDir := newTestServerWithGrovePath(t, settings)
 
-	// Pass harness explicitly in config (as the hub would after our fix).
-	// Don't pass grovePath — rely on config.harness for env-gather.
 	body := `{
 		"name": "test-agent-harness-config",
 		"id": "agent-uuid-hc",
@@ -1205,8 +1216,7 @@ profiles:
 
 	srv.Handler().ServeHTTP(w, req)
 
-	// Gemini harness requires GEMINI_API_KEY — since we didn't provide it,
-	// we should get a 202 with env requirements.
+	// GEMINI_API_KEY is empty in settings, so we should get 202 with env requirements.
 	if w.Code != http.StatusAccepted {
 		t.Fatalf("expected 202, got %d: %s", w.Code, w.Body.String())
 	}
@@ -1216,16 +1226,16 @@ profiles:
 		t.Fatal("failed to decode response:", err)
 	}
 
-	// GEMINI_API_KEY should be in the needs list (since we didn't provide it)
+	// GEMINI_API_KEY should be in the needs list (declared as empty in settings)
 	found := false
-	for _, k := range envReqs.Required {
+	for _, k := range envReqs.Needs {
 		if k == "GEMINI_API_KEY" {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Errorf("expected GEMINI_API_KEY in required keys when harness=gemini, got %v", envReqs.Required)
+		t.Errorf("expected GEMINI_API_KEY in needs, got needs=%v required=%v", envReqs.Needs, envReqs.Required)
 	}
 }
 

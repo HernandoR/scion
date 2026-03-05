@@ -86,15 +86,6 @@ func TestGenericInjectAgentInstructions(t *testing.T) {
 	}
 }
 
-func TestGenericRequiredEnvKeys(t *testing.T) {
-	g := &Generic{}
-
-	got := g.RequiredEnvKeys("")
-	if got != nil {
-		t.Errorf("RequiredEnvKeys() = %v, want nil", got)
-	}
-}
-
 func TestGenericResolveAuth_EmptyConfig(t *testing.T) {
 	g := &Generic{}
 	result, err := g.ResolveAuth(api.AuthConfig{})
@@ -133,14 +124,13 @@ func TestGenericResolveAuth_AllCreds(t *testing.T) {
 	}
 
 	expectedEnvVars := map[string]string{
-		"ANTHROPIC_API_KEY":              "anthropic",
-		"GEMINI_API_KEY":                 "gemini",
-		"GOOGLE_API_KEY":                 "google",
-		"OPENAI_API_KEY":                 "openai",
-		"CODEX_API_KEY":                  "codex",
-		"GOOGLE_CLOUD_PROJECT":           "proj",
-		"GOOGLE_CLOUD_REGION":            "region",
-		"GOOGLE_APPLICATION_CREDENTIALS": "~/.config/gcp/application_default_credentials.json",
+		"ANTHROPIC_API_KEY":    "anthropic",
+		"GEMINI_API_KEY":       "gemini",
+		"GOOGLE_API_KEY":       "google",
+		"OPENAI_API_KEY":       "openai",
+		"CODEX_API_KEY":        "codex",
+		"GOOGLE_CLOUD_PROJECT": "proj",
+		"GOOGLE_CLOUD_REGION":  "region",
 	}
 	for k, want := range expectedEnvVars {
 		if got := result.EnvVars[k]; got != want {

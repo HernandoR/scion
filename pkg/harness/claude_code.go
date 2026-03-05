@@ -180,10 +180,6 @@ func (c *ClaudeCode) GetTelemetryEnv() map[string]string {
 	}
 }
 
-func (c *ClaudeCode) RequiredEnvKeys(authSelectedType string) []string {
-	return []string{"ANTHROPIC_API_KEY"}
-}
-
 func (c *ClaudeCode) InjectSystemPrompt(agentHome string, content []byte) error {
 	target := filepath.Join(agentHome, ".claude", "system-prompt.md")
 	if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
@@ -193,12 +189,35 @@ func (c *ClaudeCode) InjectSystemPrompt(agentHome string, content []byte) error 
 }
 
 func (c *ClaudeCode) ResolveAuth(auth api.AuthConfig) (*api.ResolvedAuth, error) {
-	// Preference order: API key → Vertex AI → error
+	// Explicit selection support
+	if auth.SelectedType != "" {
+		switch auth.SelectedType {
+		case "api-key":
+			if auth.AnthropicAPIKey == "" {
+				return nil, fmt.Errorf("claude: auth type %q selected but no API key found; set ANTHROPIC_API_KEY", auth.SelectedType)
+			}
+			return &api.ResolvedAuth{
+				Method: "api-key",
+				EnvVars: map[string]string{
+					"ANTHROPIC_API_KEY": auth.AnthropicAPIKey,
+				},
+			}, nil
+		case "vertex-ai":
+			if auth.GoogleCloudProject == "" || auth.GoogleCloudRegion == "" {
+				return nil, fmt.Errorf("claude: auth type %q selected but GOOGLE_CLOUD_PROJECT and/or GOOGLE_CLOUD_REGION not set", auth.SelectedType)
+			}
+			return c.resolveVertexAI(auth), nil
+		default:
+			return nil, fmt.Errorf("claude: unknown auth type %q; valid types are: api-key, vertex-ai", auth.SelectedType)
+		}
+	}
+
+	// Auto-detect preference order: API key → Vertex AI → error
 
 	// 1. Anthropic API key (direct)
 	if auth.AnthropicAPIKey != "" {
 		return &api.ResolvedAuth{
-			Method: "anthropic-api-key",
+			Method: "api-key",
 			EnvVars: map[string]string{
 				"ANTHROPIC_API_KEY": auth.AnthropicAPIKey,
 			},
@@ -207,25 +226,32 @@ func (c *ClaudeCode) ResolveAuth(auth api.AuthConfig) (*api.ResolvedAuth, error)
 
 	// 2. Vertex AI (requires ADC + project + region)
 	if auth.GoogleAppCredentials != "" && auth.GoogleCloudProject != "" && auth.GoogleCloudRegion != "" {
-		adcContainerPath := "~/.config/gcp/application_default_credentials.json"
-		return &api.ResolvedAuth{
-			Method: "vertex-ai",
-			EnvVars: map[string]string{
-				"CLAUDE_CODE_USE_VERTEX":        "1",
-				"CLOUD_ML_REGION":               auth.GoogleCloudRegion,
-				"ANTHROPIC_VERTEX_PROJECT_ID":   auth.GoogleCloudProject,
-				"GOOGLE_APPLICATION_CREDENTIALS": adcContainerPath,
-			},
-			Files: []api.FileMapping{
-				{
-					SourcePath:    auth.GoogleAppCredentials,
-					ContainerPath: adcContainerPath,
-				},
-			},
-		}, nil
+		return c.resolveVertexAI(auth), nil
 	}
 
 	return nil, fmt.Errorf("claude: no valid auth method found; set ANTHROPIC_API_KEY for direct API access, or provide GOOGLE_APPLICATION_CREDENTIALS + GOOGLE_CLOUD_PROJECT + GOOGLE_CLOUD_REGION for Vertex AI")
+}
+
+func (c *ClaudeCode) resolveVertexAI(auth api.AuthConfig) *api.ResolvedAuth {
+	adcContainerPath := "~/.config/gcloud/application_default_credentials.json"
+	result := &api.ResolvedAuth{
+		Method: "vertex-ai",
+		EnvVars: map[string]string{
+			"CLAUDE_CODE_USE_VERTEX":      "1",
+			"CLOUD_ML_REGION":             auth.GoogleCloudRegion,
+			"ANTHROPIC_VERTEX_PROJECT_ID": auth.GoogleCloudProject,
+		},
+	}
+	if auth.GoogleAppCredentials != "" {
+		if auth.GoogleAppCredentialsExplicit {
+			result.EnvVars["GOOGLE_APPLICATION_CREDENTIALS"] = adcContainerPath
+		}
+		result.Files = append(result.Files, api.FileMapping{
+			SourcePath:    auth.GoogleAppCredentials,
+			ContainerPath: adcContainerPath,
+		})
+	}
+	return result
 }
 
 // loadSystemPrompt reads the system prompt file from agentHome and returns

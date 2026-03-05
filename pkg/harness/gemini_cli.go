@@ -112,15 +112,15 @@ func (g *GeminiCLI) Provision(ctx context.Context, agentName, agentHome, agentWo
 		return fmt.Errorf("failed to parse scion-agent.json: %w", err)
 	}
 
-	selectedType := ""
-	if cfg.Gemini != nil {
-		selectedType = cfg.Gemini.AuthSelectedType
-	}
+	selectedType := cfg.AuthSelectedType
 
-	if selectedType != "" {
-		// Update ~/.gemini/settings.json
+	// Map universal auth types to Gemini-internal values for settings.json
+	geminiAuthType := g.toGeminiAuthType(selectedType)
+
+	if geminiAuthType != "" {
+		// Update ~/.gemini/settings.json with Gemini-native auth type
 		geminiSettingsPath := filepath.Join(agentHome, g.DefaultConfigDir(), "settings.json")
-		if err := g.updateSelectedAuthType(geminiSettingsPath, selectedType); err != nil {
+		if err := g.updateSelectedAuthType(geminiSettingsPath, geminiAuthType); err != nil {
 			return fmt.Errorf("failed to update gemini settings: %w", err)
 		}
 	}
@@ -132,9 +132,9 @@ func (g *GeminiCLI) Provision(ctx context.Context, agentName, agentHome, agentWo
 	home, _ := os.UserHomeDir()
 
 	switch selectedType {
-	case "gemini-api-key":
+	case "api-key":
 		envUpdates = map[string]string{"GEMINI_API_KEY": "${GEMINI_API_KEY}"}
-	case "oauth-personal":
+	case "auth-file":
 		envUpdates = map[string]string{"GOOGLE_CLOUD_PROJECT": "${GOOGLE_CLOUD_PROJECT}"}
 	case "vertex-ai":
 		envUpdates = map[string]string{
@@ -209,6 +209,23 @@ func (g *GeminiCLI) updateSelectedAuthType(settingsPath string, selectedType str
 	return os.WriteFile(settingsPath, data, 0644)
 }
 
+// toGeminiAuthType maps universal auth type values to Gemini CLI-internal values.
+// Gemini CLI settings.json expects specific strings like "gemini-api-key",
+// "oauth-personal", "vertex-ai", or "compute-default-credentials".
+func (g *GeminiCLI) toGeminiAuthType(universal string) string {
+	switch universal {
+	case "api-key":
+		return "gemini-api-key"
+	case "auth-file":
+		// Default to oauth-personal for auth-file; ADC resolution happens in ResolveAuth
+		return "oauth-personal"
+	case "vertex-ai":
+		return "vertex-ai"
+	default:
+		return ""
+	}
+}
+
 func (g *GeminiCLI) GetEmbedDir() string {
 	return "gemini"
 }
@@ -254,20 +271,6 @@ func (g *GeminiCLI) GetTelemetryEnv() map[string]string {
 	}
 }
 
-func (g *GeminiCLI) RequiredEnvKeys(authSelectedType string) []string {
-	switch authSelectedType {
-	case "gemini-api-key":
-		return []string{"GEMINI_API_KEY"}
-	case "vertex-ai":
-		return []string{"GOOGLE_CLOUD_PROJECT"}
-	case "oauth-personal", "compute-default-credentials":
-		return nil
-	default:
-		// Default auth type for gemini is api-key based
-		return []string{"GEMINI_API_KEY"}
-	}
-}
-
 func (g *GeminiCLI) ResolveAuth(auth api.AuthConfig) (*api.ResolvedAuth, error) {
 	if auth.SelectedType != "" {
 		return g.resolveExplicit(auth)
@@ -277,7 +280,7 @@ func (g *GeminiCLI) ResolveAuth(auth api.AuthConfig) (*api.ResolvedAuth, error) 
 
 func (g *GeminiCLI) resolveExplicit(auth api.AuthConfig) (*api.ResolvedAuth, error) {
 	switch auth.SelectedType {
-	case "gemini-api-key":
+	case "api-key":
 		apiKey := auth.GeminiAPIKey
 		if apiKey == "" {
 			apiKey = auth.GoogleAPIKey
@@ -294,30 +297,51 @@ func (g *GeminiCLI) resolveExplicit(auth api.AuthConfig) (*api.ResolvedAuth, err
 			delete(envVars, "GEMINI_API_KEY")
 		}
 		return &api.ResolvedAuth{
-			Method:  "gemini-api-key",
+			Method:  "api-key",
 			EnvVars: envVars,
 		}, nil
 
-	case "oauth-personal":
-		if auth.OAuthCreds == "" {
-			return nil, fmt.Errorf("gemini: auth type %q selected but no OAuth credentials file found; expected ~/.gemini/oauth_creds.json", auth.SelectedType)
-		}
-		result := &api.ResolvedAuth{
-			Method: "oauth-personal",
-			EnvVars: map[string]string{
-				"GEMINI_DEFAULT_AUTH_TYPE": "oauth-personal",
-			},
-			Files: []api.FileMapping{
-				{
-					SourcePath:    auth.OAuthCreds,
-					ContainerPath: "~/.gemini/oauth_creds.json",
+	case "auth-file":
+		// Auto-detect between OAuth and ADC based on available credentials
+		if auth.OAuthCreds != "" {
+			result := &api.ResolvedAuth{
+				Method: "auth-file",
+				EnvVars: map[string]string{
+					"GEMINI_DEFAULT_AUTH_TYPE": "oauth-personal",
 				},
-			},
+				Files: []api.FileMapping{
+					{
+						SourcePath:    auth.OAuthCreds,
+						ContainerPath: "~/.gemini/oauth_creds.json",
+					},
+				},
+			}
+			if auth.GoogleCloudProject != "" {
+				result.EnvVars["GOOGLE_CLOUD_PROJECT"] = auth.GoogleCloudProject
+			}
+			return result, nil
 		}
-		if auth.GoogleCloudProject != "" {
-			result.EnvVars["GOOGLE_CLOUD_PROJECT"] = auth.GoogleCloudProject
+		if auth.GoogleAppCredentials != "" {
+			adcContainerPath := "~/.config/gcloud/application_default_credentials.json"
+			result := &api.ResolvedAuth{
+				Method: "auth-file",
+				EnvVars: map[string]string{
+					"GEMINI_DEFAULT_AUTH_TYPE": "compute-default-credentials",
+				},
+			}
+			if auth.GoogleAppCredentialsExplicit {
+				result.EnvVars["GOOGLE_APPLICATION_CREDENTIALS"] = adcContainerPath
+			}
+			result.Files = append(result.Files, api.FileMapping{
+				SourcePath:    auth.GoogleAppCredentials,
+				ContainerPath: adcContainerPath,
+			})
+			if auth.GoogleCloudProject != "" {
+				result.EnvVars["GOOGLE_CLOUD_PROJECT"] = auth.GoogleCloudProject
+			}
+			return result, nil
 		}
-		return result, nil
+		return nil, fmt.Errorf("gemini: auth type %q selected but no auth file found; expected OAuth at ~/.gemini/oauth_creds.json or ADC at ~/.config/gcloud/application_default_credentials.json", auth.SelectedType)
 
 	case "vertex-ai":
 		if auth.GoogleCloudProject == "" {
@@ -334,28 +358,10 @@ func (g *GeminiCLI) resolveExplicit(auth api.AuthConfig) (*api.ResolvedAuth, err
 			result.EnvVars["GOOGLE_CLOUD_REGION"] = auth.GoogleCloudRegion
 		}
 		if auth.GoogleAppCredentials != "" {
-			adcContainerPath := "~/.config/gcp/application_default_credentials.json"
-			result.EnvVars["GOOGLE_APPLICATION_CREDENTIALS"] = adcContainerPath
-			result.Files = append(result.Files, api.FileMapping{
-				SourcePath:    auth.GoogleAppCredentials,
-				ContainerPath: adcContainerPath,
-			})
-		}
-		return result, nil
-
-	case "compute-default-credentials":
-		result := &api.ResolvedAuth{
-			Method: "compute-default-credentials",
-			EnvVars: map[string]string{
-				"GEMINI_DEFAULT_AUTH_TYPE": "compute-default-credentials",
-			},
-		}
-		if auth.GoogleCloudProject != "" {
-			result.EnvVars["GOOGLE_CLOUD_PROJECT"] = auth.GoogleCloudProject
-		}
-		if auth.GoogleAppCredentials != "" {
-			adcContainerPath := "~/.config/gcp/application_default_credentials.json"
-			result.EnvVars["GOOGLE_APPLICATION_CREDENTIALS"] = adcContainerPath
+			adcContainerPath := "~/.config/gcloud/application_default_credentials.json"
+			if auth.GoogleAppCredentialsExplicit {
+				result.EnvVars["GOOGLE_APPLICATION_CREDENTIALS"] = adcContainerPath
+			}
 			result.Files = append(result.Files, api.FileMapping{
 				SourcePath:    auth.GoogleAppCredentials,
 				ContainerPath: adcContainerPath,
@@ -364,7 +370,7 @@ func (g *GeminiCLI) resolveExplicit(auth api.AuthConfig) (*api.ResolvedAuth, err
 		return result, nil
 
 	default:
-		return nil, fmt.Errorf("gemini: unknown auth type %q; valid types are: gemini-api-key, oauth-personal, vertex-ai, compute-default-credentials", auth.SelectedType)
+		return nil, fmt.Errorf("gemini: unknown auth type %q; valid types are: api-key, auth-file, vertex-ai", auth.SelectedType)
 	}
 }
 
@@ -383,19 +389,18 @@ func (g *GeminiCLI) resolveAutoDetect(auth api.AuthConfig) (*api.ResolvedAuth, e
 			envVars["GOOGLE_API_KEY"] = auth.GoogleAPIKey
 		}
 		return &api.ResolvedAuth{
-			Method:  "gemini-api-key",
+			Method:  "api-key",
 			EnvVars: envVars,
 		}, nil
 	}
 
 	// 2. ADC (application default credentials)
 	if auth.GoogleAppCredentials != "" {
-		adcContainerPath := "~/.config/gcp/application_default_credentials.json"
+		adcContainerPath := "~/.config/gcloud/application_default_credentials.json"
 		result := &api.ResolvedAuth{
-			Method: "compute-default-credentials",
+			Method: "auth-file",
 			EnvVars: map[string]string{
-				"GEMINI_DEFAULT_AUTH_TYPE":      "compute-default-credentials",
-				"GOOGLE_APPLICATION_CREDENTIALS": adcContainerPath,
+				"GEMINI_DEFAULT_AUTH_TYPE": "compute-default-credentials",
 			},
 			Files: []api.FileMapping{
 				{
@@ -403,6 +408,9 @@ func (g *GeminiCLI) resolveAutoDetect(auth api.AuthConfig) (*api.ResolvedAuth, e
 					ContainerPath: adcContainerPath,
 				},
 			},
+		}
+		if auth.GoogleAppCredentialsExplicit {
+			result.EnvVars["GOOGLE_APPLICATION_CREDENTIALS"] = adcContainerPath
 		}
 		if auth.GoogleCloudProject != "" {
 			result.EnvVars["GOOGLE_CLOUD_PROJECT"] = auth.GoogleCloudProject
@@ -413,7 +421,7 @@ func (g *GeminiCLI) resolveAutoDetect(auth api.AuthConfig) (*api.ResolvedAuth, e
 	// 3. OAuth
 	if auth.OAuthCreds != "" {
 		result := &api.ResolvedAuth{
-			Method: "oauth-personal",
+			Method: "auth-file",
 			EnvVars: map[string]string{
 				"GEMINI_DEFAULT_AUTH_TYPE": "oauth-personal",
 			},

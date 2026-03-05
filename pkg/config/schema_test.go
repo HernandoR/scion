@@ -696,7 +696,7 @@ profiles:
           requests:
             cpu: "1"
             memory: "1Gi"
-        auth_selected_type: "gemini-api-key"
+        auth_selected_type: "api-key"
     secrets:
       - key: PROFILE_SECRET
         description: "A profile-level secret"
@@ -774,8 +774,7 @@ services:
       target: "3s"
       timeout: "5s"
 
-gemini:
-  auth_selectedType: "vertex-ai"
+auth_selectedType: "vertex-ai"
 
 hub:
   endpoint: "https://hub.example.com"

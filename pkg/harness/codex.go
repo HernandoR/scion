@@ -88,16 +88,46 @@ func (c *Codex) InjectAgentInstructions(agentHome string, content []byte) error 
 	return os.WriteFile(target, content, 0644)
 }
 
-func (c *Codex) RequiredEnvKeys(authSelectedType string) []string {
-	return nil
-}
-
 func (c *Codex) ResolveAuth(auth api.AuthConfig) (*api.ResolvedAuth, error) {
-	// Preference order: CodexAPIKey → OpenAIAPIKey → CodexAuthFile → error
+	// Explicit selection support
+	if auth.SelectedType != "" {
+		switch auth.SelectedType {
+		case "api-key":
+			key := auth.CodexAPIKey
+			if key == "" {
+				key = auth.OpenAIAPIKey
+			}
+			if key == "" {
+				return nil, fmt.Errorf("codex: auth type %q selected but no API key found; set CODEX_API_KEY or OPENAI_API_KEY", auth.SelectedType)
+			}
+			envKey := "CODEX_API_KEY"
+			if auth.CodexAPIKey == "" {
+				envKey = "OPENAI_API_KEY"
+			}
+			return &api.ResolvedAuth{
+				Method:  "api-key",
+				EnvVars: map[string]string{envKey: key},
+			}, nil
+		case "auth-file":
+			if auth.CodexAuthFile == "" {
+				return nil, fmt.Errorf("codex: auth type %q selected but no auth file found; expected ~/.codex/auth.json", auth.SelectedType)
+			}
+			return &api.ResolvedAuth{
+				Method: "auth-file",
+				Files: []api.FileMapping{
+					{SourcePath: auth.CodexAuthFile, ContainerPath: "~/.codex/auth.json"},
+				},
+			}, nil
+		default:
+			return nil, fmt.Errorf("codex: unknown auth type %q; valid types are: api-key, auth-file", auth.SelectedType)
+		}
+	}
+
+	// Auto-detect preference order: CodexAPIKey → OpenAIAPIKey → CodexAuthFile → error
 
 	if auth.CodexAPIKey != "" {
 		return &api.ResolvedAuth{
-			Method: "codex-api-key",
+			Method: "api-key",
 			EnvVars: map[string]string{
 				"CODEX_API_KEY": auth.CodexAPIKey,
 			},
@@ -106,7 +136,7 @@ func (c *Codex) ResolveAuth(auth api.AuthConfig) (*api.ResolvedAuth, error) {
 
 	if auth.OpenAIAPIKey != "" {
 		return &api.ResolvedAuth{
-			Method: "openai-api-key",
+			Method: "api-key",
 			EnvVars: map[string]string{
 				"OPENAI_API_KEY": auth.OpenAIAPIKey,
 			},
@@ -115,7 +145,7 @@ func (c *Codex) ResolveAuth(auth api.AuthConfig) (*api.ResolvedAuth, error) {
 
 	if auth.CodexAuthFile != "" {
 		return &api.ResolvedAuth{
-			Method: "codex-auth-file",
+			Method: "auth-file",
 			Files: []api.FileMapping{
 				{
 					SourcePath:    auth.CodexAuthFile,

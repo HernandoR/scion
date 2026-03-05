@@ -230,7 +230,7 @@
         },
         "auth_selected_type": {
           "type": "string",
-          "description": "Authentication mechanism to use (e.g., gemini-api-key, vertex-ai, oauth-personal)."
+          "description": "Authentication mechanism to use (e.g., api-key, vertex-ai, auth-file)."
         },
         "secrets": {
           "type": "array",

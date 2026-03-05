@@ -77,10 +77,6 @@ func (g *Generic) InjectAgentInstructions(agentHome string, content []byte) erro
 	return os.WriteFile(target, content, 0644)
 }
 
-func (g *Generic) RequiredEnvKeys(authSelectedType string) []string {
-	return nil
-}
-
 func (g *Generic) ResolveAuth(auth api.AuthConfig) (*api.ResolvedAuth, error) {
 	// Generic harness is a passthrough — map all available creds, never error.
 	result := &api.ResolvedAuth{
@@ -111,8 +107,10 @@ func (g *Generic) ResolveAuth(auth api.AuthConfig) (*api.ResolvedAuth, error) {
 	}
 
 	if auth.GoogleAppCredentials != "" {
-		adcContainerPath := "~/.config/gcp/application_default_credentials.json"
-		result.EnvVars["GOOGLE_APPLICATION_CREDENTIALS"] = adcContainerPath
+		adcContainerPath := "~/.config/gcloud/application_default_credentials.json"
+		if auth.GoogleAppCredentialsExplicit {
+			result.EnvVars["GOOGLE_APPLICATION_CREDENTIALS"] = adcContainerPath
+		}
 		result.Files = append(result.Files, api.FileMapping{
 			SourcePath:    auth.GoogleAppCredentials,
 			ContainerPath: adcContainerPath,

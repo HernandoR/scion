@@ -167,10 +167,6 @@ type ResourceList struct {
 	Memory string `json:"memory,omitempty" yaml:"memory,omitempty"`
 }
 
-type GeminiConfig struct {
-	AuthSelectedType string `json:"auth_selectedType,omitempty" yaml:"auth_selectedType,omitempty"`
-}
-
 // AgentHubConfig holds hub connection settings that can be specified per-agent
 // or per-template in scion-agent.yaml. When set, these take highest priority
 // for the agent's hub endpoint, overriding grove settings and server config.
@@ -262,9 +258,9 @@ type ScionConfig struct {
 	CommandArgs []string          `json:"command_args,omitempty" yaml:"command_args,omitempty"`
 	TaskFlag    string            `json:"task_flag,omitempty" yaml:"task_flag,omitempty"`
 	Model       string            `json:"model,omitempty" yaml:"model,omitempty"`
-	Kubernetes  *KubernetesConfig `json:"kubernetes,omitempty" yaml:"kubernetes,omitempty"`
-	Gemini      *GeminiConfig     `json:"gemini,omitempty" yaml:"gemini,omitempty"`
-	Resources   *ResourceSpec     `json:"resources,omitempty" yaml:"resources,omitempty"`
+	Kubernetes       *KubernetesConfig `json:"kubernetes,omitempty" yaml:"kubernetes,omitempty"`
+	AuthSelectedType string            `json:"auth_selectedType,omitempty" yaml:"auth_selectedType,omitempty"`
+	Resources        *ResourceSpec     `json:"resources,omitempty" yaml:"resources,omitempty"`
 	Image       string            `json:"image,omitempty" yaml:"image,omitempty"`
 	Services    []ServiceSpec     `json:"services,omitempty" yaml:"services,omitempty"`
 	MaxTurns      int               `json:"max_turns,omitempty" yaml:"max_turns,omitempty"`
@@ -298,20 +294,21 @@ func (c *ScionConfig) IsDetached() bool {
 
 type AuthConfig struct {
 	// Google/Gemini auth
-	GeminiAPIKey         string
-	GoogleAPIKey         string
-	GoogleAppCredentials string
-	GoogleCloudProject   string
-	GoogleCloudRegion    string
-	OAuthCreds           string
+	GeminiAPIKey                  string
+	GoogleAPIKey                  string
+	GoogleAppCredentials          string
+	GoogleAppCredentialsExplicit  bool // true when value came from GOOGLE_APPLICATION_CREDENTIALS env var
+	GoogleCloudProject            string
+	GoogleCloudRegion             string
+	OAuthCreds                    string
 
 	// Anthropic auth
 	AnthropicAPIKey string
 
 	// OpenAI/Codex auth
-	OpenAIAPIKey    string
-	CodexAPIKey     string
-	CodexAuthFile   string
+	OpenAIAPIKey     string
+	CodexAPIKey      string
+	CodexAuthFile    string
 	OpenCodeAuthFile string
 
 	// Auth mode selection

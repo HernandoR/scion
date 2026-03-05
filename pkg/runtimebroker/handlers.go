@@ -30,7 +30,6 @@ import (
 	"github.com/ptone/scion-agent/pkg/api"
 	"github.com/ptone/scion-agent/pkg/config"
 	"github.com/ptone/scion-agent/pkg/gcp"
-	"github.com/ptone/scion-agent/pkg/harness"
 	"github.com/ptone/scion-agent/pkg/templatecache"
 )
 
@@ -1240,19 +1239,7 @@ func (s *Server) extractRequiredEnvKeys(req CreateAgentRequest) ([]string, map[s
 		profileName = settings.ActiveProfile
 	}
 
-	// Phase 1: Harness-aware env key extraction
-	harnessConfigName := s.resolveHarnessConfigName(req, settings)
-	if harnessConfigName != "" {
-		harnessName, authType := s.resolveHarnessIdentity(harnessConfigName, req.GrovePath, settings, req.Config)
-		if harnessName != "" {
-			h := harness.New(harnessName)
-			for _, key := range h.RequiredEnvKeys(authType) {
-				required[key] = struct{}{}
-			}
-		}
-	}
-
-	// Phase 2: Settings-based empty-value env key extraction (preserved)
+	// Phase 1: Settings-based empty-value env key extraction
 	if settings != nil {
 		// Get profile env keys
 		if profileName != "" && settings.Profiles != nil {
@@ -1283,15 +1270,15 @@ func (s *Server) extractRequiredEnvKeys(req CreateAgentRequest) ([]string, map[s
 		}
 	}
 
-	// Phase 3: Secrets declarations from settings and template
+	// Phase 2: Secrets declarations from settings and template
 	secretInfo := make(map[string]api.SecretKeyInfo)
 
-	// 3a: Harness RequiredEnvKeys are all secret-eligible (no description available)
+	// 2a: Settings-derived empty-value env keys are secret-eligible
 	for k := range required {
-		secretInfo[k] = api.SecretKeyInfo{Source: "harness"}
+		secretInfo[k] = api.SecretKeyInfo{Source: "settings"}
 	}
 
-	// 3b: Settings harness_configs[*].secrets
+	// 2b: Settings harness_configs[*].secrets
 	if settings != nil {
 		for _, hcfg := range settings.HarnessConfigs {
 			for _, sec := range hcfg.Secrets {

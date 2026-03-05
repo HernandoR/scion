@@ -68,15 +68,6 @@ func TestCodexInjectAgentInstructions(t *testing.T) {
 	}
 }
 
-func TestCodexRequiredEnvKeys(t *testing.T) {
-	c := &Codex{}
-
-	got := c.RequiredEnvKeys("")
-	if got != nil {
-		t.Errorf("RequiredEnvKeys() = %v, want nil", got)
-	}
-}
-
 func TestCodexResolveAuth_CodexAPIKey(t *testing.T) {
 	c := &Codex{}
 	auth := api.AuthConfig{CodexAPIKey: "codex-key"}
@@ -84,8 +75,8 @@ func TestCodexResolveAuth_CodexAPIKey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Method != "codex-api-key" {
-		t.Errorf("Method = %q, want %q", result.Method, "codex-api-key")
+	if result.Method != "api-key" {
+		t.Errorf("Method = %q, want %q", result.Method, "api-key")
 	}
 	if result.EnvVars["CODEX_API_KEY"] != "codex-key" {
 		t.Errorf("CODEX_API_KEY = %q, want %q", result.EnvVars["CODEX_API_KEY"], "codex-key")
@@ -99,8 +90,8 @@ func TestCodexResolveAuth_OpenAIAPIKey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Method != "openai-api-key" {
-		t.Errorf("Method = %q, want %q", result.Method, "openai-api-key")
+	if result.Method != "api-key" {
+		t.Errorf("Method = %q, want %q", result.Method, "api-key")
 	}
 	if result.EnvVars["OPENAI_API_KEY"] != "openai-key" {
 		t.Errorf("OPENAI_API_KEY = %q, want %q", result.EnvVars["OPENAI_API_KEY"], "openai-key")
@@ -114,8 +105,8 @@ func TestCodexResolveAuth_AuthFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Method != "codex-auth-file" {
-		t.Errorf("Method = %q, want %q", result.Method, "codex-auth-file")
+	if result.Method != "auth-file" {
+		t.Errorf("Method = %q, want %q", result.Method, "auth-file")
 	}
 	if len(result.Files) != 1 {
 		t.Fatalf("expected 1 file mapping, got %d", len(result.Files))
@@ -137,8 +128,8 @@ func TestCodexResolveAuth_PreferenceOrder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Method != "codex-api-key" {
-		t.Errorf("CodexAPIKey should win; Method = %q, want %q", result.Method, "codex-api-key")
+	if result.Method != "api-key" {
+		t.Errorf("CodexAPIKey should win; Method = %q, want %q", result.Method, "api-key")
 	}
 
 	// OpenAIAPIKey should win over auth file
@@ -150,8 +141,8 @@ func TestCodexResolveAuth_PreferenceOrder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Method != "openai-api-key" {
-		t.Errorf("OpenAIAPIKey should win over auth file; Method = %q, want %q", result.Method, "openai-api-key")
+	if result.Method != "api-key" {
+		t.Errorf("OpenAIAPIKey should win over auth file; Method = %q, want %q", result.Method, "api-key")
 	}
 }
 

@@ -1,4 +1,4 @@
 harness: gemini
 image: us-central1-docker.pkg.dev/ptone-misc/public-docker/scion-gemini:latest
 user: scion
-auth_selected_type: gemini-api-key
+auth_selected_type: api-key

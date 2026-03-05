@@ -56,12 +56,6 @@ type Harness interface {
 	// (localhost:4317). These are injected only when telemetry is enabled.
 	GetTelemetryEnv() map[string]string
 
-	// RequiredEnvKeys returns the environment variable keys that must be present
-	// for this harness to function. The authSelectedType parameter allows the
-	// harness to vary requirements by authentication method (e.g., "gemini-api-key"
-	// vs "vertex-ai"). Returns nil if no env keys are required.
-	RequiredEnvKeys(authSelectedType string) []string
-
 	// ResolveAuth selects the single best authentication method from a populated
 	// AuthConfig and returns the env vars and file mappings needed to inject
 	// credentials into the agent container. Returns an error with an actionable

@@ -209,21 +209,6 @@ func TestClaudeInjectAgentInstructions_RemovesLowercaseFile(t *testing.T) {
 	}
 }
 
-func TestClaudeRequiredEnvKeys(t *testing.T) {
-	c := &ClaudeCode{}
-
-	got := c.RequiredEnvKeys("")
-	if len(got) != 1 || got[0] != "ANTHROPIC_API_KEY" {
-		t.Errorf("RequiredEnvKeys() = %v, want [ANTHROPIC_API_KEY]", got)
-	}
-
-	// Auth type should not change the result for Claude
-	got = c.RequiredEnvKeys("some-auth-type")
-	if len(got) != 1 || got[0] != "ANTHROPIC_API_KEY" {
-		t.Errorf("RequiredEnvKeys(some-auth-type) = %v, want [ANTHROPIC_API_KEY]", got)
-	}
-}
-
 func TestClaudeInjectSystemPrompt(t *testing.T) {
 	agentHome := t.TempDir()
 	c := &ClaudeCode{}
@@ -361,8 +346,8 @@ func TestClaudeResolveAuth_APIKey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Method != "anthropic-api-key" {
-		t.Errorf("Method = %q, want %q", result.Method, "anthropic-api-key")
+	if result.Method != "api-key" {
+		t.Errorf("Method = %q, want %q", result.Method, "api-key")
 	}
 	if result.EnvVars["ANTHROPIC_API_KEY"] != "sk-ant-test" {
 		t.Errorf("ANTHROPIC_API_KEY = %q, want %q", result.EnvVars["ANTHROPIC_API_KEY"], "sk-ant-test")
@@ -415,8 +400,8 @@ func TestClaudeResolveAuth_APIKeyWinsOverVertex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Method != "anthropic-api-key" {
-		t.Errorf("API key should win over Vertex; Method = %q, want %q", result.Method, "anthropic-api-key")
+	if result.Method != "api-key" {
+		t.Errorf("API key should win over Vertex; Method = %q, want %q", result.Method, "api-key")
 	}
 }
 

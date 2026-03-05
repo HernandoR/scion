@@ -67,6 +67,9 @@ func GatherAuthWithEnv(env map[string]string) api.AuthConfig {
 		GoogleAppCredentials: lookup("GOOGLE_APPLICATION_CREDENTIALS"),
 	}
 
+	// Mark whether GOOGLE_APPLICATION_CREDENTIALS was explicitly set via env var
+	auth.GoogleAppCredentialsExplicit = auth.GoogleAppCredentials != ""
+
 	// File-sourced fields: check well-known paths
 	if auth.GoogleAppCredentials == "" && home != "" {
 		adcPath := filepath.Join(home, ".config", "gcloud", "application_default_credentials.json")
@@ -96,46 +99,25 @@ func GatherAuthWithEnv(env map[string]string) api.AuthConfig {
 }
 
 // OverlaySettings applies settings-based overrides to an AuthConfig.
-// Currently this handles Gemini's SelectedType from scion-agent.json,
-// agent settings, and host settings. For non-Gemini harnesses this is a no-op.
+// It reads AuthSelectedType from scion-agent.json (top-level), agent settings,
+// and host settings, in that priority order.
 func OverlaySettings(auth *api.AuthConfig, h api.Harness, agentHome string) {
-	g, ok := h.(*GeminiCLI)
-	if !ok {
-		return
-	}
-
 	selectedType := ""
 
-	// 1. Check scion-agent.json for gemini.authSelectedType
+	// 1. Check scion-agent.json for top-level auth_selectedType
 	scionAgentPath := filepath.Join(filepath.Dir(agentHome), "scion-agent.json")
 	if data, err := os.ReadFile(scionAgentPath); err == nil {
 		var cfg api.ScionConfig
 		if err := json.Unmarshal(data, &cfg); err == nil {
-			if cfg.Gemini != nil {
-				selectedType = cfg.Gemini.AuthSelectedType
-			}
+			selectedType = cfg.AuthSelectedType
 		}
 	}
 
-	// 2. Check agent settings
-	agentSettingsPath := filepath.Join(agentHome, g.DefaultConfigDir(), "settings.json")
-	if agentSettings, err := config.LoadAgentSettings(agentSettingsPath); err == nil {
-		if selectedType == "" {
-			selectedType = agentSettings.Security.Auth.SelectedType
-		}
-		if auth.GeminiAPIKey == "" && auth.GoogleAPIKey == "" {
-			auth.GeminiAPIKey = agentSettings.ApiKey
-		}
-	}
-
-	// 3. Check host settings for fallbacks
+	// 2. Check host settings for fallbacks
 	hostSettings, _ := config.GetAgentSettings()
 	if hostSettings != nil {
 		if selectedType == "" {
 			selectedType = hostSettings.Security.Auth.SelectedType
-		}
-		if auth.GeminiAPIKey == "" && auth.GoogleAPIKey == "" {
-			auth.GeminiAPIKey = hostSettings.ApiKey
 		}
 	}
 

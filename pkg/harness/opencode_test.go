@@ -42,15 +42,6 @@ func TestOpenCodeInjectAgentInstructions(t *testing.T) {
 	}
 }
 
-func TestOpenCodeRequiredEnvKeys(t *testing.T) {
-	o := &OpenCode{}
-
-	got := o.RequiredEnvKeys("")
-	if len(got) != 1 || got[0] != "ANTHROPIC_API_KEY" {
-		t.Errorf("RequiredEnvKeys() = %v, want [ANTHROPIC_API_KEY]", got)
-	}
-}
-
 func TestOpenCodeInjectSystemPrompt(t *testing.T) {
 	agentHome := t.TempDir()
 	o := &OpenCode{}
@@ -92,8 +83,8 @@ func TestOpenCodeResolveAuth_AnthropicAPIKey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Method != "anthropic-api-key" {
-		t.Errorf("Method = %q, want %q", result.Method, "anthropic-api-key")
+	if result.Method != "api-key" {
+		t.Errorf("Method = %q, want %q", result.Method, "api-key")
 	}
 	if result.EnvVars["ANTHROPIC_API_KEY"] != "sk-ant-test" {
 		t.Errorf("ANTHROPIC_API_KEY = %q, want %q", result.EnvVars["ANTHROPIC_API_KEY"], "sk-ant-test")
@@ -107,8 +98,8 @@ func TestOpenCodeResolveAuth_OpenAIAPIKey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Method != "openai-api-key" {
-		t.Errorf("Method = %q, want %q", result.Method, "openai-api-key")
+	if result.Method != "api-key" {
+		t.Errorf("Method = %q, want %q", result.Method, "api-key")
 	}
 	if result.EnvVars["OPENAI_API_KEY"] != "sk-openai-test" {
 		t.Errorf("OPENAI_API_KEY = %q, want %q", result.EnvVars["OPENAI_API_KEY"], "sk-openai-test")
@@ -122,8 +113,8 @@ func TestOpenCodeResolveAuth_AuthFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Method != "opencode-auth-file" {
-		t.Errorf("Method = %q, want %q", result.Method, "opencode-auth-file")
+	if result.Method != "auth-file" {
+		t.Errorf("Method = %q, want %q", result.Method, "auth-file")
 	}
 	if len(result.Files) != 1 {
 		t.Fatalf("expected 1 file mapping, got %d", len(result.Files))
@@ -142,8 +133,8 @@ func TestOpenCodeResolveAuth_PreferenceOrder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Method != "anthropic-api-key" {
-		t.Errorf("AnthropicAPIKey should win; Method = %q, want %q", result.Method, "anthropic-api-key")
+	if result.Method != "api-key" {
+		t.Errorf("AnthropicAPIKey should win; Method = %q, want %q", result.Method, "api-key")
 	}
 
 	// OpenAIAPIKey should win over auth file
@@ -155,8 +146,8 @@ func TestOpenCodeResolveAuth_PreferenceOrder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Method != "openai-api-key" {
-		t.Errorf("OpenAIAPIKey should win over auth file; Method = %q, want %q", result.Method, "openai-api-key")
+	if result.Method != "api-key" {
+		t.Errorf("OpenAIAPIKey should win over auth file; Method = %q, want %q", result.Method, "api-key")
 	}
 }
 
