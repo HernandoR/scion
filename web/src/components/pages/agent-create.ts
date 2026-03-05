@@ -44,6 +44,9 @@ export class ScionPageAgentCreate extends LitElement {
   private harness = 'gemini';
 
   @state()
+  private harnessAuth = '';
+
+  @state()
   private brokerId = '';
 
   @state()
@@ -346,6 +349,9 @@ export class ScionPageAgentCreate extends LitElement {
         notify: this.notify,
       };
 
+      if (this.harnessAuth) {
+        body.harnessAuth = this.harnessAuth;
+      }
       if (this.templateId) {
         body.template = this.templateId;
       }
@@ -556,6 +562,24 @@ export class ScionPageAgentCreate extends LitElement {
               <sl-option value="codex">Codex</sl-option>
             </sl-select>
             <div class="hint">The LLM harness configuration to use.</div>
+          </div>
+
+          <div class="form-field">
+            <label for="harness-auth">Harness Authentication</label>
+            <sl-select
+              id="harness-auth"
+              placeholder="Select auth method..."
+              .value=${this.harnessAuth}
+              @sl-change=${(e: Event) => {
+                this.harnessAuth = (e.target as HTMLElement & { value: string }).value;
+              }}
+            >
+              <sl-option value="">Auto Detected</sl-option>
+              <sl-option value="api-key">Provider API Key</sl-option>
+              <sl-option value="vertex-ai">Vertex Model Garden</sl-option>
+              <sl-option value="auth-file">Harness credential file</sl-option>
+            </sl-select>
+            <div class="hint">Override the authentication method for the harness.</div>
           </div>
 
           <div class="form-field">
