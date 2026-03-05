@@ -33,7 +33,8 @@ const (
 	// AgentTokenAudience is the audience claim for agent tokens.
 	AgentTokenAudience = "scion-hub-api"
 	// DefaultAgentTokenDuration is the default validity duration for agent tokens.
-	DefaultAgentTokenDuration = 24 * time.Hour
+	// Tokens are refreshed by sciontool 2 hours before expiry.
+	DefaultAgentTokenDuration = 10 * time.Hour
 )
 
 // AgentTokenScope represents the authorized scopes for an agent.
@@ -52,6 +53,8 @@ const (
 	ScopeAgentLifecycle AgentTokenScope = "grove:agent:lifecycle"
 	// ScopeAgentNotify allows the agent to create notification subscriptions within the same grove.
 	ScopeAgentNotify AgentTokenScope = "grove:agent:notify"
+	// ScopeAgentTokenRefresh allows the agent to refresh its own token before expiry.
+	ScopeAgentTokenRefresh AgentTokenScope = "agent:token:refresh"
 )
 
 // AgentTokenClaims represents the custom claims in an agent JWT.
@@ -162,6 +165,50 @@ func (s *AgentTokenService) ValidateAgentToken(tokenString string) (*AgentTokenC
 	}
 
 	return &claims, nil
+}
+
+// RefreshAgentToken validates an existing agent token and issues a new one
+// with the same claims but a refreshed expiry. The existing token must still
+// be valid (not expired) at the time of the call.
+func (s *AgentTokenService) RefreshAgentToken(tokenString string) (string, time.Time, error) {
+	claims, err := s.ValidateAgentToken(tokenString)
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("cannot refresh invalid token: %w", err)
+	}
+
+	return s.GenerateAgentTokenWithExpiry(claims.Subject, claims.GroveID, claims.Scopes)
+}
+
+// GenerateAgentTokenWithExpiry generates a JWT for an agent and also returns
+// the expiry time of the new token.
+func (s *AgentTokenService) GenerateAgentTokenWithExpiry(agentID, groveID string, scopes []AgentTokenScope) (string, time.Time, error) {
+	now := time.Now()
+
+	if len(scopes) == 0 {
+		scopes = []AgentTokenScope{ScopeAgentStatusUpdate}
+	}
+
+	expiry := now.Add(s.config.TokenDuration)
+	claims := AgentTokenClaims{
+		Claims: jwt.Claims{
+			Issuer:    AgentTokenIssuer,
+			Subject:   agentID,
+			Audience:  jwt.Audience{AgentTokenAudience},
+			IssuedAt:  jwt.NewNumericDate(now),
+			Expiry:    jwt.NewNumericDate(expiry),
+			NotBefore: jwt.NewNumericDate(now),
+			ID:        generateTokenID(),
+		},
+		GroveID: groveID,
+		Scopes:  scopes,
+	}
+
+	token, err := jwt.Signed(s.signer).Claims(claims).Serialize()
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("failed to sign token: %w", err)
+	}
+
+	return token, expiry, nil
 }
 
 // HasScope checks if the claims include the specified scope.

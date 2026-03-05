@@ -271,6 +271,73 @@ func TestRequireAgentScope(t *testing.T) {
 	})
 }
 
+func TestAgentTokenService_RefreshToken(t *testing.T) {
+	service, err := NewAgentTokenService(AgentTokenConfig{
+		SigningKey:    make([]byte, 32),
+		TokenDuration: time.Hour,
+	})
+	require.NoError(t, err)
+
+	// Generate a token
+	originalToken, err := service.GenerateAgentToken("agent-123", "grove-456",
+		[]AgentTokenScope{ScopeAgentStatusUpdate, ScopeAgentTokenRefresh})
+	require.NoError(t, err)
+
+	// Refresh the token
+	newToken, newExpiry, err := service.RefreshAgentToken(originalToken)
+	require.NoError(t, err)
+	assert.NotEmpty(t, newToken)
+	assert.NotEqual(t, originalToken, newToken)
+	assert.True(t, newExpiry.After(time.Now()))
+
+	// Validate the new token has the same claims
+	claims, err := service.ValidateAgentToken(newToken)
+	require.NoError(t, err)
+	assert.Equal(t, "agent-123", claims.Subject)
+	assert.Equal(t, "grove-456", claims.GroveID)
+	assert.True(t, claims.HasScope(ScopeAgentStatusUpdate))
+	assert.True(t, claims.HasScope(ScopeAgentTokenRefresh))
+}
+
+func TestAgentTokenService_RefreshExpiredToken(t *testing.T) {
+	service, err := NewAgentTokenService(AgentTokenConfig{
+		SigningKey:    make([]byte, 32),
+		TokenDuration: -time.Hour, // Already expired
+	})
+	require.NoError(t, err)
+
+	// Generate an expired token
+	expiredToken, err := service.GenerateAgentToken("agent-123", "grove-456", nil)
+	require.NoError(t, err)
+
+	// Refresh should fail for expired token
+	_, _, err = service.RefreshAgentToken(expiredToken)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot refresh invalid token")
+}
+
+func TestAgentTokenService_GenerateAgentTokenWithExpiry(t *testing.T) {
+	service, err := NewAgentTokenService(AgentTokenConfig{
+		SigningKey:    make([]byte, 32),
+		TokenDuration: 10 * time.Hour,
+	})
+	require.NoError(t, err)
+
+	token, expiry, err := service.GenerateAgentTokenWithExpiry("agent-123", "grove-456",
+		[]AgentTokenScope{ScopeAgentStatusUpdate})
+	require.NoError(t, err)
+	assert.NotEmpty(t, token)
+
+	// Expiry should be ~10 hours from now
+	expectedExpiry := time.Now().Add(10 * time.Hour)
+	assert.WithinDuration(t, expectedExpiry, expiry, 5*time.Second)
+
+	// Token should be valid
+	claims, err := service.ValidateAgentToken(token)
+	require.NoError(t, err)
+	assert.Equal(t, "agent-123", claims.Subject)
+}
+
 func TestGetAgentFromContext(t *testing.T) {
 	t.Run("no agent in context", func(t *testing.T) {
 		ctx := context.Background()

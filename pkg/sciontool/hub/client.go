@@ -19,6 +19,7 @@ package hub
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -248,6 +249,188 @@ func (c *Client) ReportState(ctx context.Context, phase state.Phase, activity st
 		Status:   s.DisplayStatus(),
 		Message:  message,
 	})
+}
+
+// RefreshTokenResponse is the response from the token refresh endpoint.
+type RefreshTokenResponse struct {
+	Token     string `json:"token"`
+	ExpiresAt string `json:"expires_at"`
+}
+
+// RefreshToken calls the Hub to refresh the agent's authentication token.
+// On success, the client's token is updated in-place.
+func (c *Client) RefreshToken(ctx context.Context) (string, time.Time, error) {
+	if !c.IsConfigured() {
+		return "", time.Time{}, fmt.Errorf("hub client not configured")
+	}
+
+	endpoint := fmt.Sprintf("%s/api/v1/agents/%s/token/refresh",
+		strings.TrimSuffix(c.hubURL, "/"), c.agentID)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, nil)
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("X-Scion-Agent-Token", c.token)
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("token refresh request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		return "", time.Time{}, fmt.Errorf("token refresh failed with status %d: %s",
+			resp.StatusCode, string(respBody))
+	}
+
+	var result RefreshTokenResponse
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return "", time.Time{}, fmt.Errorf("failed to parse refresh response: %w", err)
+	}
+
+	expiresAt, err := time.Parse(time.RFC3339, result.ExpiresAt)
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("failed to parse expiry time: %w", err)
+	}
+
+	// Update the client's token in-place
+	c.token = result.Token
+
+	return result.Token, expiresAt, nil
+}
+
+// TokenRefreshConfig configures the token refresh loop.
+type TokenRefreshConfig struct {
+	// RefreshAt is the time at which the token should be refreshed.
+	RefreshAt time.Time
+	// Timeout is the context timeout for each refresh request.
+	Timeout time.Duration
+	// OnRefreshed is called when the token is successfully refreshed.
+	OnRefreshed func(newExpiry time.Time)
+	// OnError is called when a refresh attempt fails.
+	OnError func(error)
+	// OnAuthLost is called when auth is terminally lost (token expired, cannot refresh).
+	OnAuthLost func()
+}
+
+// DefaultTokenRefreshTimeout is the default timeout for token refresh requests.
+const DefaultTokenRefreshTimeout = 30 * time.Second
+
+// StartTokenRefresh starts a background goroutine that refreshes the agent token
+// before it expires. After a successful refresh, the next refresh is scheduled
+// based on the new token's expiry (2 hours before expiry for a 10-hour token).
+// Returns a channel that will be closed when the refresh loop exits.
+func (c *Client) StartTokenRefresh(ctx context.Context, config *TokenRefreshConfig) <-chan struct{} {
+	done := make(chan struct{})
+
+	timeout := DefaultTokenRefreshTimeout
+	if config != nil && config.Timeout > 0 {
+		timeout = config.Timeout
+	}
+
+	go func() {
+		defer close(done)
+
+		refreshAt := config.RefreshAt
+		for {
+			now := time.Now()
+			delay := refreshAt.Sub(now)
+			if delay <= 0 {
+				// Refresh time has already passed; try immediately
+				delay = 0
+			}
+
+			var timer *time.Timer
+			if delay > 0 {
+				timer = time.NewTimer(delay)
+			} else {
+				timer = time.NewTimer(0) // fire immediately
+			}
+
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return
+			case <-timer.C:
+			}
+
+			refreshCtx, cancel := context.WithTimeout(ctx, timeout)
+			_, newExpiry, err := c.RefreshToken(refreshCtx)
+			cancel()
+
+			if err != nil {
+				if config != nil && config.OnError != nil {
+					config.OnError(err)
+				}
+
+				// If the token has already expired, auth is terminally lost
+				if time.Now().After(refreshAt.Add(2 * time.Hour)) {
+					if config != nil && config.OnAuthLost != nil {
+						config.OnAuthLost()
+					}
+					return
+				}
+
+				// Retry in 30 seconds
+				refreshAt = time.Now().Add(30 * time.Second)
+				continue
+			}
+
+			if config != nil && config.OnRefreshed != nil {
+				config.OnRefreshed(newExpiry)
+			}
+
+			// Schedule next refresh: 2 hours before new expiry
+			refreshAt = newExpiry.Add(-2 * time.Hour)
+			if refreshAt.Before(time.Now()) {
+				// Token duration is very short; refresh in 1 minute
+				refreshAt = time.Now().Add(1 * time.Minute)
+			}
+		}
+	}()
+
+	return done
+}
+
+// GetToken returns the client's current auth token.
+func (c *Client) GetToken() string {
+	if c == nil {
+		return ""
+	}
+	return c.token
+}
+
+// ParseTokenExpiry extracts the expiry time from a JWT token without
+// validating the signature. This is safe for scheduling purposes since
+// the Hub will validate the token on each request.
+func ParseTokenExpiry(tokenString string) (time.Time, error) {
+	parts := strings.Split(tokenString, ".")
+	if len(parts) != 3 {
+		return time.Time{}, fmt.Errorf("invalid JWT format: expected 3 parts, got %d", len(parts))
+	}
+
+	// Decode the payload (second part)
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to decode JWT payload: %w", err)
+	}
+
+	var claims struct {
+		Exp int64 `json:"exp"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return time.Time{}, fmt.Errorf("failed to parse JWT claims: %w", err)
+	}
+
+	if claims.Exp == 0 {
+		return time.Time{}, fmt.Errorf("token has no expiry claim")
+	}
+
+	return time.Unix(claims.Exp, 0), nil
 }
 
 // HeartbeatConfig configures the heartbeat loop.

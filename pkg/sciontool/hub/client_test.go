@@ -517,6 +517,158 @@ func TestClient_StartHeartbeat(t *testing.T) {
 	})
 }
 
+func TestParseTokenExpiry(t *testing.T) {
+	t.Run("valid JWT with exp claim", func(t *testing.T) {
+		// Construct a simple JWT with known expiry
+		// Header: {"alg":"HS256","typ":"JWT"}
+		// Payload: {"sub":"agent-123","exp":1893456000} (2030-01-01T00:00:00Z)
+		// Note: signature doesn't matter for expiry parsing
+		token := "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZ2VudC0xMjMiLCJleHAiOjE4OTM0NTYwMDB9.invalid-sig"
+
+		expiry, err := ParseTokenExpiry(token)
+		require.NoError(t, err)
+		expected := time.Unix(1893456000, 0)
+		assert.Equal(t, expected, expiry)
+	})
+
+	t.Run("invalid JWT format", func(t *testing.T) {
+		_, err := ParseTokenExpiry("not-a-jwt")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid JWT format")
+	})
+
+	t.Run("empty token", func(t *testing.T) {
+		_, err := ParseTokenExpiry("")
+		assert.Error(t, err)
+	})
+
+	t.Run("no exp claim", func(t *testing.T) {
+		// Header: {"alg":"HS256","typ":"JWT"}
+		// Payload: {"sub":"agent-123"} (no exp)
+		token := "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZ2VudC0xMjMifQ.invalid-sig"
+
+		_, err := ParseTokenExpiry(token)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "no expiry claim")
+	})
+}
+
+func TestClient_RefreshToken(t *testing.T) {
+	t.Run("successful refresh", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, http.MethodPost, r.Method)
+			assert.Equal(t, "/api/v1/agents/agent-123/token/refresh", r.URL.Path)
+			assert.Equal(t, "old-token", r.Header.Get("X-Scion-Agent-Token"))
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"token":"new-token","expires_at":"2030-01-01T00:00:00Z"}`))
+		}))
+		defer server.Close()
+
+		client := NewClientWithConfig(server.URL, "old-token", "agent-123")
+
+		newToken, expiresAt, err := client.RefreshToken(context.Background())
+		require.NoError(t, err)
+		assert.Equal(t, "new-token", newToken)
+		assert.Equal(t, time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC), expiresAt)
+
+		// Client token should be updated
+		assert.Equal(t, "new-token", client.GetToken())
+	})
+
+	t.Run("server rejects refresh", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte("token expired"))
+		}))
+		defer server.Close()
+
+		client := NewClientWithConfig(server.URL, "expired-token", "agent-123")
+
+		_, _, err := client.RefreshToken(context.Background())
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "401")
+
+		// Client token should not be updated on failure
+		assert.Equal(t, "expired-token", client.GetToken())
+	})
+
+	t.Run("not configured", func(t *testing.T) {
+		client := &Client{}
+		_, _, err := client.RefreshToken(context.Background())
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "not configured")
+	})
+}
+
+func TestClient_GetToken(t *testing.T) {
+	t.Run("nil client", func(t *testing.T) {
+		var c *Client
+		assert.Equal(t, "", c.GetToken())
+	})
+
+	t.Run("configured client", func(t *testing.T) {
+		c := NewClientWithConfig("http://hub", "my-token", "agent-1")
+		assert.Equal(t, "my-token", c.GetToken())
+	})
+}
+
+func TestClient_StartTokenRefresh(t *testing.T) {
+	t.Run("refreshes token at scheduled time", func(t *testing.T) {
+		refreshed := false
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			refreshed = true
+			futureExpiry := time.Now().Add(10 * time.Hour).UTC().Format(time.RFC3339)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"token":"refreshed-token","expires_at":"` + futureExpiry + `"}`))
+		}))
+		defer server.Close()
+
+		client := NewClientWithConfig(server.URL, "old-token", "agent-123")
+
+		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		defer cancel()
+
+		done := client.StartTokenRefresh(ctx, &TokenRefreshConfig{
+			RefreshAt: time.Now(), // Refresh immediately
+			Timeout:   5 * time.Second,
+			OnRefreshed: func(newExpiry time.Time) {
+				assert.True(t, newExpiry.After(time.Now()))
+			},
+		})
+
+		<-done
+		assert.True(t, refreshed, "should have refreshed the token")
+		assert.Equal(t, "refreshed-token", client.GetToken())
+	})
+
+	t.Run("stops when context is cancelled", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"token":"new","expires_at":"2030-01-01T00:00:00Z"}`))
+		}))
+		defer server.Close()
+
+		client := NewClientWithConfig(server.URL, "token", "agent-123")
+
+		ctx, cancel := context.WithCancel(context.Background())
+		done := client.StartTokenRefresh(ctx, &TokenRefreshConfig{
+			RefreshAt: time.Now().Add(1 * time.Hour), // Far in future
+		})
+
+		cancel()
+
+		select {
+		case <-done:
+			// Good
+		case <-time.After(200 * time.Millisecond):
+			t.Fatal("token refresh loop did not exit after context cancellation")
+		}
+	})
+}
+
 func TestClient_StartHeartbeat_DefaultConfig(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

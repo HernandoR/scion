@@ -301,9 +301,11 @@ func runInit(args []string) int {
 		}{code, err}
 	}()
 
-	// Heartbeat control variables - declared here so they're accessible during shutdown
+	// Heartbeat and token refresh control variables - declared here so they're accessible during shutdown
 	var heartbeatCancel context.CancelFunc
 	var heartbeatDone <-chan struct{}
+	var tokenRefreshCancel context.CancelFunc
+	var tokenRefreshDone <-chan struct{}
 
 	// Wait a moment for process to start, then run post-start hooks
 	// Use a short timeout to detect immediate startup failures
@@ -352,6 +354,49 @@ func runInit(args []string) int {
 				},
 			})
 			log.Info("Started Hub heartbeat loop (interval: %s)", hub.DefaultHeartbeatInterval)
+
+			// Start token refresh loop if token has an expiry
+			token := os.Getenv(hub.EnvHubToken)
+			if tokenExpiry, err := hub.ParseTokenExpiry(token); err != nil {
+				log.Debug("Could not parse token expiry, skipping token refresh: %v", err)
+			} else {
+				// Schedule refresh 2 hours before expiry
+				refreshAt := tokenExpiry.Add(-2 * time.Hour)
+				if refreshAt.Before(time.Now()) {
+					// Token is already within the refresh window or expired
+					if time.Now().Before(tokenExpiry) {
+						// Still valid, refresh immediately
+						refreshAt = time.Now()
+						log.Info("Token within refresh window, refreshing immediately (expires: %s)", tokenExpiry.Format(time.RFC3339))
+					} else {
+						// Token has already expired
+						log.Error("AUTH_EXPIRED: Agent token has expired at %s - hub communication will fail", tokenExpiry.Format(time.RFC3339))
+						log.Error("AUTH_EXPIRED: Agent limits (max-duration, max-turns, max-model-calls) are enforced locally and remain active")
+						refreshAt = time.Time{} // signal not to start refresh
+					}
+				} else {
+					log.Info("Token refresh scheduled at %s (token expires: %s)",
+						refreshAt.Format(time.RFC3339), tokenExpiry.Format(time.RFC3339))
+				}
+
+				if !refreshAt.IsZero() {
+					var tokenRefreshCtx context.Context
+					tokenRefreshCtx, tokenRefreshCancel = context.WithCancel(context.Background())
+					tokenRefreshDone = hubClient.StartTokenRefresh(tokenRefreshCtx, &hub.TokenRefreshConfig{
+						RefreshAt: refreshAt,
+						OnRefreshed: func(newExpiry time.Time) {
+							log.Info("Token refreshed successfully, new expiry: %s", newExpiry.Format(time.RFC3339))
+						},
+						OnError: func(err error) {
+							log.Error("Token refresh failed: %v", err)
+						},
+						OnAuthLost: func() {
+							log.Error("AUTH_LOST: Agent token has expired and could not be refreshed - hub communication is no longer possible")
+							log.Error("AUTH_LOST: Agent limits (max-duration, max-turns, max-model-calls) are enforced locally and remain active")
+						},
+					})
+				}
+			}
 		} else {
 			log.Debug("Hub client not configured - skipping status report")
 		}
@@ -413,7 +458,12 @@ func runInit(args []string) int {
 		result = <-exitChan
 	}
 
-	// Stop heartbeat before reporting shutdown status to prevent races
+	// Stop token refresh and heartbeat before reporting shutdown status to prevent races
+	if tokenRefreshCancel != nil {
+		tokenRefreshCancel()
+		<-tokenRefreshDone
+		log.Debug("Token refresh loop stopped")
+	}
 	if heartbeatCancel != nil {
 		heartbeatCancel()
 		<-heartbeatDone

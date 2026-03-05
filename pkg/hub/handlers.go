@@ -1267,10 +1267,10 @@ func (s *Server) handleAgentAction(w http.ResponseWriter, r *http.Request, id, a
 		return
 	}
 
-	// For actions other than "status", we require user or agent authentication.
-	// Agents should only be able to update their own status, or perform lifecycle
-	// actions on agents within their grove if they have the appropriate scope.
-	if action != "status" {
+	// For actions other than "status" and "token/refresh" (self-access),
+	// we require user or agent authentication with appropriate scopes.
+	// Token refresh is handled separately with self-access enforcement.
+	if action != "status" && action != "token/refresh" {
 		userIdent := GetUserIdentityFromContext(r.Context())
 		agentIdent := GetAgentIdentityFromContext(r.Context())
 		if userIdent == nil && agentIdent == nil {
@@ -1323,9 +1323,64 @@ func (s *Server) handleAgentAction(w http.ResponseWriter, r *http.Request, id, a
 		s.handleAgentMessage(w, r, id)
 	case "restore":
 		s.restoreAgent(w, r, id)
+	case "token/refresh":
+		s.handleAgentTokenRefresh(w, r, id)
 	default:
 		NotFound(w, "Action")
 	}
+}
+
+// handleAgentTokenRefresh handles POST /api/v1/agents/{id}/token/refresh.
+// An agent can refresh its own token before it expires to get a new token
+// with a fresh expiry. This is a self-access operation: the agent must present
+// a valid token whose subject matches the target agent ID.
+func (s *Server) handleAgentTokenRefresh(w http.ResponseWriter, r *http.Request, id string) {
+	agentIdent := GetAgentIdentityFromContext(r.Context())
+	if agentIdent == nil {
+		writeError(w, http.StatusUnauthorized, ErrCodeUnauthorized,
+			"agent authentication required for token refresh", nil)
+		return
+	}
+
+	// Enforce self-access: agents can only refresh their own token
+	if agentIdent.ID() != id {
+		writeError(w, http.StatusForbidden, ErrCodeForbidden,
+			"agents can only refresh their own token", nil)
+		return
+	}
+
+	// Require the token refresh scope
+	if !agentIdent.HasScope(ScopeAgentTokenRefresh) {
+		writeError(w, http.StatusForbidden, ErrCodeForbidden,
+			"missing required scope: agent:token:refresh", nil)
+		return
+	}
+
+	if s.agentTokenService == nil {
+		writeError(w, http.StatusInternalServerError, ErrCodeInternalError,
+			"agent token service not available", nil)
+		return
+	}
+
+	// Extract the current token from the request to refresh it
+	token := extractAgentToken(r)
+	if token == "" {
+		writeError(w, http.StatusBadRequest, ErrCodeInvalidRequest,
+			"no agent token found in request", nil)
+		return
+	}
+
+	newToken, expiresAt, err := s.agentTokenService.RefreshAgentToken(token)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, ErrCodeUnauthorized,
+			"failed to refresh token: "+err.Error(), nil)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"token":      newToken,
+		"expires_at": expiresAt.UTC().Format(time.RFC3339),
+	})
 }
 
 // restoreAgent restores a soft-deleted agent.

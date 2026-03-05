@@ -833,7 +833,7 @@ func (s *Server) GenerateAgentToken(agentID, groveID string, additionalScopes ..
 		return "", fmt.Errorf("agent token service not initialized")
 	}
 
-	scopes := []AgentTokenScope{ScopeAgentStatusUpdate}
+	scopes := []AgentTokenScope{ScopeAgentStatusUpdate, ScopeAgentTokenRefresh}
 
 	// In dev-auth mode, auto-grant agent creation and lifecycle scopes
 	// so agents can create sub-agents without explicit template configuration.
