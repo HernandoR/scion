@@ -28,6 +28,9 @@ export class ScionPageAgentCreate extends LitElement {
   private submitting = false;
 
   @state()
+  private submittingEdit = false;
+
+  @state()
   private error: string | null = null;
 
   /** Form field values */
@@ -426,6 +429,82 @@ export class ScionPageAgentCreate extends LitElement {
     }
   }
 
+  private async handleCreateAndEdit(_e: Event): Promise<void> {
+    if (!this.name.trim()) {
+      this.error = 'Agent name is required.';
+      return;
+    }
+    if (!this.groveId) {
+      this.error = 'Please select a grove.';
+      return;
+    }
+
+    this.submittingEdit = true;
+    this.error = null;
+
+    try {
+      const body: Record<string, unknown> = {
+        name: this.name.trim(),
+        groveId: this.groveId,
+        harnessConfig: this.harness,
+        notify: this.notify,
+        provisionOnly: true,
+      };
+
+      if (this.harnessAuth) {
+        body.harnessAuth = this.harnessAuth;
+      }
+      if (this.templateId) {
+        body.template = this.templateId;
+      }
+      if (this.brokerId) {
+        body.runtimeBrokerId = this.brokerId;
+      }
+      if (this.task.trim()) {
+        body.task = this.task.trim();
+      }
+
+      const response = await fetch('/api/v1/agents', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+        const errorData = (await response.json().catch(() => ({}))) as {
+          message?: string;
+          error?: string | { message?: string; code?: string };
+        };
+        const msg =
+          (typeof errorData.error === 'object' && errorData.error?.message) ||
+          errorData.message ||
+          (typeof errorData.error === 'string' && errorData.error) ||
+          `HTTP ${response.status}`;
+        throw new Error(msg);
+      }
+
+      const result = (await response.json()) as {
+        agent?: { id: string };
+        id?: string;
+      };
+      const agentId = result.agent?.id || result.id;
+
+      if (!agentId) {
+        throw new Error('No agent ID in response');
+      }
+
+      // Navigate to the advanced configure page
+      window.history.pushState({}, '', `/agents/${agentId}/configure`);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    } catch (err) {
+      console.error('Failed to create agent:', err);
+      this.error = err instanceof Error ? err.message : 'Failed to create agent';
+    } finally {
+      this.submittingEdit = false;
+    }
+  }
+
   /**
    * Select the best broker for the currently selected grove.
    * Prefers the grove's default broker; falls back to first online broker.
@@ -634,35 +713,27 @@ export class ScionPageAgentCreate extends LitElement {
             </sl-tooltip>
           </div>
 
-          <div class="notify-field">
-            <sl-checkbox
-              ?checked=${this.telemetryEnabled}
-              @sl-change=${(e: Event) => {
-                this.telemetryEnabled = (e.target as HTMLInputElement).checked;
-              }}
-            >
-              Enable Telemetry
-            </sl-checkbox>
-            <sl-tooltip
-              content="Collect telemetry data for this agent. The default reflects the global telemetry setting."
-              hoist
-            >
-              <span class="help-badge">?</span>
-            </sl-tooltip>
-          </div>
-
           <div class="form-actions">
+            <sl-button
+              variant="default"
+              ?loading=${this.submittingEdit}
+              ?disabled=${this.submitting || this.submittingEdit}
+              @click=${(e: Event) => this.handleCreateAndEdit(e)}
+            >
+              <sl-icon slot="prefix" name="sliders"></sl-icon>
+              Create &amp; Edit
+            </sl-button>
             <sl-button
               variant="primary"
               ?loading=${this.submitting}
-              ?disabled=${this.submitting}
+              ?disabled=${this.submitting || this.submittingEdit}
               @click=${(e: Event) => this.handleSubmit(e)}
             >
               <sl-icon slot="prefix" name="play-circle"></sl-icon>
               Create &amp; Start Agent
             </sl-button>
             <a href="${this.sourceGrove ? `/groves/${this.sourceGrove.id}` : '/agents'}" style="text-decoration: none;">
-              <sl-button variant="default" ?disabled=${this.submitting}>
+              <sl-button variant="default" ?disabled=${this.submitting || this.submittingEdit}>
                 Cancel
               </sl-button>
             </a>

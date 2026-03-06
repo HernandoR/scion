@@ -70,6 +70,7 @@ const USED_ICONS = [
   'question-circle',
   'shield-lock',
   'shield-x',
+  'sliders',
   'stop-circle',
   'sun',
   'terminal',

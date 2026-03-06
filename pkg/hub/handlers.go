@@ -1079,6 +1079,7 @@ func (s *Server) updateAgent(w http.ResponseWriter, r *http.Request, id string) 
 		Labels       map[string]string `json:"labels,omitempty"`
 		Annotations  map[string]string `json:"annotations,omitempty"`
 		TaskSummary  string            `json:"taskSummary,omitempty"`
+		Config       *api.ScionConfig  `json:"config,omitempty"`
 		StateVersion int64             `json:"stateVersion"`
 	}
 
@@ -1105,6 +1106,34 @@ func (s *Server) updateAgent(w http.ResponseWriter, r *http.Request, id string) 
 	}
 	if updates.TaskSummary != "" {
 		agent.TaskSummary = updates.TaskSummary
+	}
+
+	// Apply config updates (only allowed for agents in 'created' phase)
+	if updates.Config != nil {
+		if agent.Phase != "created" {
+			Conflict(w, "Config can only be updated for agents in 'created' phase")
+			return
+		}
+		if agent.AppliedConfig == nil {
+			agent.AppliedConfig = &store.AgentAppliedConfig{}
+		}
+		cfg := updates.Config
+		if cfg.Image != "" {
+			agent.AppliedConfig.Image = cfg.Image
+		}
+		if cfg.Model != "" {
+			agent.AppliedConfig.Model = cfg.Model
+		}
+		if cfg.Task != "" {
+			agent.AppliedConfig.Task = cfg.Task
+		}
+		if cfg.AuthSelectedType != "" {
+			agent.AppliedConfig.HarnessAuth = cfg.AuthSelectedType
+		}
+		if cfg.Env != nil {
+			agent.AppliedConfig.Env = cfg.Env
+		}
+		agent.AppliedConfig.InlineConfig = cfg
 	}
 
 	if err := s.store.UpdateAgent(ctx, agent); err != nil {

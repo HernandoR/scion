@@ -51,6 +51,9 @@ import '@shoelace-style/shoelace/dist/components/alert/alert.js';
 import '@shoelace-style/shoelace/dist/components/radio-group/radio-group.js';
 import '@shoelace-style/shoelace/dist/components/radio-button/radio-button.js';
 import '@shoelace-style/shoelace/dist/components/switch/switch.js';
+import '@shoelace-style/shoelace/dist/components/tab-group/tab-group.js';
+import '@shoelace-style/shoelace/dist/components/tab/tab.js';
+import '@shoelace-style/shoelace/dist/components/tab-panel/tab-panel.js';
 
 // Import all components for client-side hydration and routing
 // App shell (imports shared components internally)
@@ -72,6 +75,7 @@ import '../components/pages/grove-settings.js';
 import '../components/pages/agents.js';
 import '../components/pages/agent-detail.js';
 import '../components/pages/agent-create.js';
+import '../components/pages/agent-configure.js';
 import '../components/pages/grove-create.js';
 import '../components/pages/terminal.js';
 import '../components/pages/brokers.js';
@@ -138,6 +142,7 @@ const ROUTES: { pattern: RegExp; tag: string }[] = [
   { pattern: /^\/groves\/[^/]+\/settings$/, tag: 'scion-page-grove-settings' },
   { pattern: /^\/groves\/[^/]+$/, tag: 'scion-page-grove-detail' },
   { pattern: /^\/agents\/new$/, tag: 'scion-page-agent-create' },
+  { pattern: /^\/agents\/[^/]+\/configure$/, tag: 'scion-page-agent-configure' },
   { pattern: /^\/agents\/[^/]+\/terminal$/, tag: 'scion-page-terminal' },
   { pattern: /^\/agents\/[^/]+$/, tag: 'scion-page-agent-detail' },
 ];
@@ -206,6 +211,7 @@ async function init(): Promise<void> {
     customElements.whenDefined('scion-page-agents'),
     customElements.whenDefined('scion-page-agent-detail'),
     customElements.whenDefined('scion-page-agent-create'),
+    customElements.whenDefined('scion-page-agent-configure'),
     customElements.whenDefined('scion-page-terminal'),
     customElements.whenDefined('scion-page-brokers'),
     customElements.whenDefined('scion-page-broker-detail'),

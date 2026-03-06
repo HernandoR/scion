@@ -814,6 +814,17 @@ export class ScionPageAgentDetail extends LitElement {
                   Start
                 </sl-button>
               ` : nothing}
+          ${this.agent.phase === 'created' ? html`
+                <a href="/agents/${this.agentId}/configure" style="text-decoration: none;">
+                  <sl-button
+                    variant="default"
+                    size="small"
+                  >
+                    <sl-icon slot="prefix" name="sliders"></sl-icon>
+                    Configure
+                  </sl-button>
+                </a>
+              ` : nothing}
           ${can(this.agent._capabilities, 'delete') ? html`
             <sl-button
               variant="danger"
