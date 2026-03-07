@@ -227,21 +227,14 @@ func (p *Pipeline) handleMetrics(ctx context.Context, resourceMetrics []*metricp
 		return nil
 	}
 
-	// Count total data points for logging
-	dpCount := 0
-	for _, rm := range resourceMetrics {
-		for _, sm := range rm.ScopeMetrics {
-			dpCount += len(sm.Metrics)
-		}
-	}
-
-	// Forward to cloud exporter if available
+	// Forward to cloud exporter if available. Note: in GCP-native mode,
+	// ExportProtoMetrics is a no-op — metrics reach GCP via the SDK
+	// MeterProvider, not through pipeline forwarding.
 	if p.exporter != nil {
 		if err := p.exporter.ExportProtoMetrics(ctx, resourceMetrics); err != nil {
 			log.Error("Failed to export metrics to cloud: %v", err)
 			return err
 		}
-		log.Debug("Exported %d metrics to cloud", dpCount)
 	}
 
 	return nil

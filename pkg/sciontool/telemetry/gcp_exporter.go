@@ -16,8 +16,6 @@ import (
 	metricpb "go.opentelemetry.io/proto/otlp/metrics/v1"
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 	"google.golang.org/api/option"
-
-	scionlog "github.com/ptone/scion-agent/pkg/sciontool/log"
 )
 
 // GCPExporter exports telemetry data to GCP using native APIs.
@@ -99,25 +97,15 @@ func (e *GCPExporter) ExportProtoSpans(ctx context.Context, resourceSpans []*tra
 	return e.traceExporter.ExportSpans(ctx, sdkSpans)
 }
 
-// ExportProtoMetrics is a no-op for the GCP exporter. Metrics are handled
-// by the SDK MeterProvider configured in providers.go with the GCP metric
-// exporter. Pipeline-received metrics from agents are not forwarded via this
-// path since the GCP metric exporter requires SDK metricdata types.
+// ExportProtoMetrics is a no-op for the GCP exporter.
+//
+// In GCP-native mode, metrics are exported directly by the SDK MeterProvider
+// configured in providers.go (using the GCP metric exporter), which requires
+// SDK metricdata types. The pipeline receives OTLP proto-format metrics from
+// agents, but converting between proto and SDK metric types is not supported,
+// so pipeline-received metrics are silently dropped here. The actual metrics
+// still reach GCP via each agent's own MeterProvider export path.
 func (e *GCPExporter) ExportProtoMetrics(ctx context.Context, resourceMetrics []*metricpb.ResourceMetrics) error {
-	if e == nil {
-		return nil
-	}
-	// Log that metrics arrived but can't be forwarded in GCP mode.
-	// The agent's own metric providers handle their own export.
-	dpCount := 0
-	for _, rm := range resourceMetrics {
-		for _, sm := range rm.ScopeMetrics {
-			dpCount += len(sm.Metrics)
-		}
-	}
-	if dpCount > 0 {
-		scionlog.Debug("GCP exporter: received %d metrics (pipeline metric forwarding not supported in GCP-native mode)", dpCount)
-	}
 	return nil
 }
 

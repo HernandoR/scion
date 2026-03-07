@@ -298,7 +298,12 @@ gcloud traces list --project "$GCP_PROJECT" \
 ### 6.4 Check Cloud Monitoring (metrics)
 
 The `TelemetryHandler` records OTel metric instruments (`gen_ai.tokens.input`,
-`agent.tool.calls`, etc.). These are forwarded as OTLP metrics:
+`agent.tool.calls`, etc.). In GCP-native mode, metrics reach Cloud Monitoring
+via the SDK MeterProvider (configured in `providers.go`), **not** through the
+OTLP pipeline forwarding path. The pipeline's `ExportProtoMetrics` is a no-op
+for the GCP exporter because it receives OTLP proto types which cannot be
+converted to the SDK metricdata types required by the GCP metric exporter.
+This means metrics are exported directly by each agent's own MeterProvider:
 
 ```bash
 echo "https://console.cloud.google.com/monitoring/metrics-explorer?project=${GCP_PROJECT}"
