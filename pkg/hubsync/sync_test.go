@@ -611,6 +611,46 @@ func TestSyncResult_RemoteOnlyNotAffectIsInSync(t *testing.T) {
 	}
 }
 
+func TestSyncResult_StaleLocalNotAffectIsInSync(t *testing.T) {
+	tests := []struct {
+		name     string
+		result   SyncResult
+		expected bool
+	}{
+		{
+			name: "only stale-local agents is in sync",
+			result: SyncResult{
+				StaleLocal: []string{"agent-a"},
+			},
+			expected: true,
+		},
+		{
+			name: "stale-local with remote-only is in sync",
+			result: SyncResult{
+				StaleLocal: []string{"agent-a"},
+				RemoteOnly: []AgentRef{{Name: "remote", ID: "remote-id"}},
+			},
+			expected: true,
+		},
+		{
+			name: "stale-local with to-register is not in sync",
+			result: SyncResult{
+				StaleLocal: []string{"agent-a"},
+				ToRegister: []string{"agent-b"},
+			},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.result.IsInSync(); got != tt.expected {
+				t.Errorf("IsInSync() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+
 func TestSyncResult_ExcludeAgent_WithRemoteOnly(t *testing.T) {
 	result := SyncResult{
 		ToRegister: []string{"agent1"},
@@ -635,6 +675,34 @@ func TestSyncResult_ExcludeAgent_WithRemoteOnly(t *testing.T) {
 	}
 	if len(filtered.ToRemove) != 1 {
 		t.Errorf("Expected 1 ToRemove agent, got %d", len(filtered.ToRemove))
+	}
+}
+
+func TestSyncResult_ExcludeAgents(t *testing.T) {
+	result := SyncResult{
+		ToRegister: []string{"agent1", "agent2"},
+		ToRemove:   []AgentRef{{Name: "agent3", ID: "id3"}},
+		Pending:    []AgentRef{{Name: "agent4", ID: "id4"}},
+		RemoteOnly: []AgentRef{{Name: "agent5", ID: "id5"}},
+		StaleLocal: []string{"agent6"},
+	}
+
+	filtered := result.ExcludeAgents([]string{"agent2", "agent4", "agent6"})
+
+	if len(filtered.ToRegister) != 1 || filtered.ToRegister[0] != "agent1" {
+		t.Fatalf("unexpected ToRegister after ExcludeAgents: %#v", filtered.ToRegister)
+	}
+	if len(filtered.Pending) != 0 {
+		t.Fatalf("expected pending to be empty, got %#v", filtered.Pending)
+	}
+	if len(filtered.StaleLocal) != 0 {
+		t.Fatalf("expected stale local to be empty, got %#v", filtered.StaleLocal)
+	}
+	if len(filtered.ToRemove) != 1 || filtered.ToRemove[0].Name != "agent3" {
+		t.Fatalf("unexpected ToRemove after ExcludeAgents: %#v", filtered.ToRemove)
+	}
+	if len(filtered.RemoteOnly) != 1 || filtered.RemoteOnly[0].Name != "agent5" {
+		t.Fatalf("unexpected RemoteOnly after ExcludeAgents: %#v", filtered.RemoteOnly)
 	}
 }
 
@@ -749,6 +817,57 @@ func TestUpdateLastSyncedAt_NanoPrecision(t *testing.T) {
 	}
 	if !parsed.Equal(hubTime) {
 		t.Errorf("Round-trip failed: got %v, want %v", parsed, hubTime)
+	}
+}
+
+func TestUpdateLastSyncedAt_Monotonic(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	newer := time.Date(2026, 3, 1, 10, 0, 0, 0, time.UTC)
+	older := newer.Add(-time.Hour)
+
+	UpdateLastSyncedAt(tmpDir, newer, false)
+	UpdateLastSyncedAt(tmpDir, older, false)
+
+	state, err := config.LoadGroveState(tmpDir)
+	if err != nil {
+		t.Fatalf("Failed to load grove state: %v", err)
+	}
+
+	got, err := time.Parse(time.RFC3339Nano, state.LastSyncedAt)
+	if err != nil {
+		t.Fatalf("Failed to parse stored timestamp: %v", err)
+	}
+
+	if !got.Equal(newer) {
+		t.Fatalf("watermark regressed: got %v, want %v", got, newer)
+	}
+}
+
+func TestUpdateLastSyncedAt_InvalidExistingTimestamp(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	invalidState := []byte("last_synced_at: not-a-time\n")
+	if err := os.WriteFile(filepath.Join(tmpDir, "state.yaml"), invalidState, 0644); err != nil {
+		t.Fatalf("Failed to write invalid state file: %v", err)
+	}
+
+	hubTime := time.Date(2026, 3, 2, 9, 30, 0, 123, time.UTC)
+	UpdateLastSyncedAt(tmpDir, hubTime, false)
+
+	state, err := config.LoadGroveState(tmpDir)
+	if err != nil {
+		t.Fatalf("Failed to load grove state: %v", err)
+	}
+	if state.LastSyncedAt == "" {
+		t.Fatal("Expected last_synced_at to be written")
+	}
+	got, err := time.Parse(time.RFC3339Nano, state.LastSyncedAt)
+	if err != nil {
+		t.Fatalf("Failed to parse stored timestamp: %v", err)
+	}
+	if !got.Equal(hubTime) {
+		t.Fatalf("unexpected watermark after invalid existing timestamp: got %v, want %v", got, hubTime)
 	}
 }
 
@@ -1251,13 +1370,13 @@ func TestCompareAgents_WatermarkBoundary(t *testing.T) {
 	watermarkTime := time.Date(2026, 2, 22, 19, 18, 4, 123456789, time.UTC)
 
 	tests := []struct {
-		name             string
-		agentCreated     time.Time
-		lastSyncedAt     time.Time
-		agentStatus      string
-		wantRemoteOnly   int
-		wantToRemove     int
-		wantPending      int
+		name           string
+		agentCreated   time.Time
+		lastSyncedAt   time.Time
+		agentStatus    string
+		wantRemoteOnly int
+		wantToRemove   int
+		wantPending    int
 	}{
 		{
 			name:           "agent created at exact watermark time is RemoteOnly",
@@ -1371,5 +1490,74 @@ func TestCompareAgents_WatermarkBoundary(t *testing.T) {
 				t.Errorf("Pending: got %d, want %d", len(result.Pending), tt.wantPending)
 			}
 		})
+	}
+}
+
+func TestCompareAgents_LocalOnlyStaleAfterWatermark(t *testing.T) {
+	groveID := "test-grove-id"
+	brokerID := "test-broker-id"
+	watermark := time.Date(2026, 3, 3, 12, 0, 0, 0, time.UTC)
+
+	tmpDir := t.TempDir()
+	agentDir := filepath.Join(tmpDir, "agents", "stale-agent")
+	if err := os.MkdirAll(agentDir, 0755); err != nil {
+		t.Fatalf("failed to create agent dir: %v", err)
+	}
+
+	configPath := filepath.Join(agentDir, "scion-agent.json")
+	if err := os.WriteFile(configPath, []byte(`{"harness":"claude"}`), 0644); err != nil {
+		t.Fatalf("failed to write scion-agent.json: %v", err)
+	}
+	oldTime := watermark.Add(-time.Minute)
+	if err := os.Chtimes(configPath, oldTime, oldTime); err != nil {
+		t.Fatalf("failed to set config mtime: %v", err)
+	}
+
+	if err := config.SaveGroveState(tmpDir, &config.GroveState{
+		LastSyncedAt: watermark.Format(time.RFC3339Nano),
+	}); err != nil {
+		t.Fatalf("failed to save state.yaml: %v", err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/agents") {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"agents":     []map[string]interface{}{},
+				"serverTime": time.Now().UTC().Format(time.RFC3339Nano),
+				"totalCount": 0,
+				"nextCursor": "",
+			})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	client, err := hubclient.New(server.URL)
+	if err != nil {
+		t.Fatalf("failed to create hub client: %v", err)
+	}
+	hubCtx := &HubContext{
+		Client:    client,
+		GroveID:   groveID,
+		BrokerID:  brokerID,
+		GrovePath: tmpDir,
+		Settings:  &config.Settings{},
+	}
+
+	result, err := CompareAgents(context.Background(), hubCtx)
+	if err != nil {
+		t.Fatalf("CompareAgents failed: %v", err)
+	}
+
+	if len(result.ToRegister) != 0 {
+		t.Fatalf("expected no ToRegister agents, got %v", result.ToRegister)
+	}
+	if len(result.StaleLocal) != 1 || result.StaleLocal[0] != "stale-agent" {
+		t.Fatalf("expected stale-agent in StaleLocal, got %v", result.StaleLocal)
+	}
+	if !result.IsInSync() {
+		t.Fatal("expected stale-local only result to be treated as in-sync")
 	}
 }

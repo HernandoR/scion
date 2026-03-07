@@ -25,6 +25,7 @@ import (
 	"github.com/ptone/scion-agent/pkg/agent"
 	"github.com/ptone/scion-agent/pkg/config"
 	"github.com/ptone/scion-agent/pkg/hubclient"
+	"github.com/ptone/scion-agent/pkg/hubsync"
 	"github.com/ptone/scion-agent/pkg/runtime"
 	"github.com/ptone/scion-agent/pkg/util"
 	"github.com/spf13/cobra"
@@ -57,15 +58,12 @@ var deleteCmd = &cobra.Command{
 			fmt.Println("Warning: --preserve-branch used outside a git repository; this flag has no effect.")
 		}
 
-		// For delete with --stopped, we can't specify a target agent
-		// For multi-agent delete, pass the first agent name to exclude from sync requirements
-		var targetAgent string
-		if !deleteStopped && len(args) > 0 {
-			targetAgent = args[0]
+		// Check if Hub should be used, excluding all target agents from sync requirements.
+		var excludedAgents []string
+		if !deleteStopped {
+			excludedAgents = args
 		}
-
-		// Check if Hub should be used, excluding the target agent from sync requirements
-		hubCtx, err := CheckHubAvailabilityForAgent(grovePath, targetAgent, false)
+		hubCtx, err := CheckHubAvailabilityForAgents(grovePath, excludedAgents, false)
 		if err != nil {
 			return err
 		}
@@ -224,6 +222,13 @@ func deleteAgentsViaHub(hubCtx *HubContext, agentNames []string) error {
 		branchDeleted, err := agent.DeleteAgentFiles(agentName, grovePath, !preserveBranch)
 		if err != nil {
 			statusf("Warning: Hub record deleted but local cleanup failed for '%s': %v\n", agentName, err)
+			statusf("Run 'scion --no-hub delete %s' to retry targeted cleanup, or 'scion clean' to reset the grove.\n", agentName)
+		}
+
+		// Keep sync watermark current after a successful Hub delete. If hub server
+		// time is unavailable in this flow, UpdateLastSyncedAt falls back to local UTC.
+		if hubCtx != nil && hubCtx.GrovePath != "" {
+			hubsync.UpdateLastSyncedAt(hubCtx.GrovePath, time.Time{}, hubCtx.IsGlobal)
 		}
 		if branchDeleted {
 			statusf("Git branch associated with agent '%s' deleted.\n", agentName)

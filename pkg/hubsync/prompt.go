@@ -100,6 +100,15 @@ func ShowSyncPlan(result *SyncResult, autoConfirm bool) bool {
 		}
 	}
 
+	// Show stale-local agents for visibility (they don't require action)
+	if len(result.StaleLocal) > 0 {
+		fmt.Println()
+		fmt.Println("Stale local agent artifacts (no action needed):")
+		for _, name := range result.StaleLocal {
+			fmt.Printf("  ~ %s\n", name)
+		}
+	}
+
 	fmt.Println()
 	return ConfirmAction("Proceed with sync?", true, autoConfirm)
 }

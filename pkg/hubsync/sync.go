@@ -23,6 +23,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ptone/scion-agent/pkg/api"
@@ -53,6 +54,7 @@ type SyncResult struct {
 	InSync     []string   // Agents already in sync
 	Pending    []AgentRef // Hub agents in pending status (not yet started, no local artifacts expected)
 	RemoteOnly []AgentRef // Hub agents created by other brokers after our last sync (no action needed)
+	StaleLocal []string   // Local artifacts that are older than/equal to last sync (informational only)
 	ServerTime time.Time  // Hub server time from the list response (for clock-skew-safe watermarks)
 }
 
@@ -65,7 +67,25 @@ func (r *SyncResult) IsInSync() bool {
 // ToRegister, ToRemove, and Pending lists. This is used when operating on a specific agent
 // so that the sync check doesn't require syncing the target of the operation.
 func (r *SyncResult) ExcludeAgent(agentName string) *SyncResult {
-	if agentName == "" {
+	return r.ExcludeAgents([]string{agentName})
+}
+
+// ExcludeAgents returns a new SyncResult with the specified agents excluded from
+// all actionable and informational buckets. This is used when operating on one
+// or more agents so sync gating does not block on the current targets.
+func (r *SyncResult) ExcludeAgents(agentNames []string) *SyncResult {
+	if len(agentNames) == 0 {
+		return r
+	}
+
+	excluded := make(map[string]struct{}, len(agentNames))
+	for _, name := range agentNames {
+		if strings.TrimSpace(name) == "" {
+			continue
+		}
+		excluded[name] = struct{}{}
+	}
+	if len(excluded) == 0 {
 		return r
 	}
 
@@ -75,26 +95,32 @@ func (r *SyncResult) ExcludeAgent(agentName string) *SyncResult {
 	}
 
 	for _, name := range r.ToRegister {
-		if name != agentName {
+		if _, skip := excluded[name]; !skip {
 			result.ToRegister = append(result.ToRegister, name)
 		}
 	}
 
 	for _, ref := range r.ToRemove {
-		if ref.Name != agentName {
+		if _, skip := excluded[ref.Name]; !skip {
 			result.ToRemove = append(result.ToRemove, ref)
 		}
 	}
 
 	for _, ref := range r.Pending {
-		if ref.Name != agentName {
+		if _, skip := excluded[ref.Name]; !skip {
 			result.Pending = append(result.Pending, ref)
 		}
 	}
 
 	for _, ref := range r.RemoteOnly {
-		if ref.Name != agentName {
+		if _, skip := excluded[ref.Name]; !skip {
 			result.RemoteOnly = append(result.RemoteOnly, ref)
+		}
+	}
+
+	for _, name := range r.StaleLocal {
+		if _, skip := excluded[name]; !skip {
+			result.StaleLocal = append(result.StaleLocal, name)
 		}
 	}
 
@@ -103,13 +129,13 @@ func (r *SyncResult) ExcludeAgent(agentName string) *SyncResult {
 
 // HubContext holds the context for Hub operations.
 type HubContext struct {
-	Client     hubclient.Client
-	Endpoint   string
-	Settings   *config.Settings
-	GroveID    string
-	BrokerID string
-	GrovePath  string
-	IsGlobal   bool
+	Client    hubclient.Client
+	Endpoint  string
+	Settings  *config.Settings
+	GroveID   string
+	BrokerID  string
+	GrovePath string
+	IsGlobal  bool
 }
 
 // EnsureHubReadyOptions configures the behavior of EnsureHubReady.
@@ -125,6 +151,9 @@ type EnsureHubReadyOptions struct {
 	// For delete: the agent won't be required to be registered on Hub first.
 	// For create: the agent won't be required to be removed from Hub first.
 	TargetAgent string
+	// ExcludedAgents extends TargetAgent to support multi-agent operations.
+	// Any excluded agent is filtered from sync gating checks.
+	ExcludedAgents []string
 }
 
 // EnsureHubReady performs all Hub pre-flight checks before agent operations.
@@ -233,7 +262,7 @@ func EnsureHubReady(grovePath string, opts EnsureHubReadyOptions) (*HubContext, 
 		Endpoint:  endpoint,
 		Settings:  settings,
 		GroveID:   groveID,
-		BrokerID:    brokerID,
+		BrokerID:  brokerID,
 		GrovePath: resolvedPath,
 		IsGlobal:  isGlobal,
 	}
@@ -353,9 +382,14 @@ func EnsureHubReady(grovePath string, opts EnsureHubReadyOptions) (*HubContext, 
 	// If we're operating on a specific agent, exclude it from sync requirements.
 	// This allows operations like delete to proceed without first syncing the
 	// target agent (e.g., you can delete a local-only agent without registering it).
-	effectiveSyncResult := syncResult
+	excludedAgents := append([]string{}, opts.ExcludedAgents...)
 	if opts.TargetAgent != "" {
-		effectiveSyncResult = syncResult.ExcludeAgent(opts.TargetAgent)
+		excludedAgents = append(excludedAgents, opts.TargetAgent)
+	}
+
+	effectiveSyncResult := syncResult
+	if len(excludedAgents) > 0 {
+		effectiveSyncResult = syncResult.ExcludeAgents(excludedAgents)
 	}
 
 	if !effectiveSyncResult.IsInSync() {
@@ -421,16 +455,44 @@ func checkBrokerAvailability(ctx context.Context, hubCtx *HubContext) (bool, err
 
 // UpdateLastSyncedAt updates the lastSyncedAt watermark in state.yaml.
 // Uses hubTime if non-zero (preferred), otherwise falls back to local time.
+var lastSyncedAtMu sync.Mutex
+
 func UpdateLastSyncedAt(grovePath string, hubTime time.Time, isGlobal bool) {
+	_ = isGlobal // retained for API compatibility
+
+	if strings.TrimSpace(grovePath) == "" {
+		debugf("Warning: skipping lastSyncedAt update: empty grove path")
+		return
+	}
+
 	var ts time.Time
 	if !hubTime.IsZero() {
 		ts = hubTime.UTC()
 	} else {
 		ts = time.Now().UTC()
 	}
-	formatted := ts.Format(time.RFC3339Nano)
-	state := &config.GroveState{LastSyncedAt: formatted}
-	if err := config.SaveGroveState(grovePath, state); err != nil {
+
+	lastSyncedAtMu.Lock()
+	defer lastSyncedAtMu.Unlock()
+
+	currentState, err := config.LoadGroveState(grovePath)
+	if err != nil {
+		debugf("Warning: failed to load current state.yaml for watermark update: %v", err)
+		currentState = &config.GroveState{}
+	}
+
+	if currentState.LastSyncedAt != "" {
+		existingTS, parseErr := time.Parse(time.RFC3339Nano, currentState.LastSyncedAt)
+		if parseErr != nil {
+			debugf("Warning: failed to parse existing lastSyncedAt %q: %v", currentState.LastSyncedAt, parseErr)
+		} else if existingTS.After(ts) {
+			ts = existingTS
+		}
+	}
+
+	currentState.LastSyncedAt = ts.Format(time.RFC3339Nano)
+
+	if err := saveGroveStateAtomic(grovePath, currentState); err != nil {
 		debugf("Warning: failed to save lastSyncedAt to state.yaml: %v", err)
 	}
 }
@@ -454,7 +516,7 @@ func CompareAgents(ctx context.Context, hubCtx *HubContext) (*SyncResult, error)
 	defer cancel()
 
 	opts := &hubclient.ListAgentsOptions{
-		GroveID:       hubCtx.GroveID,
+		GroveID:         hubCtx.GroveID,
 		RuntimeBrokerID: hubCtx.BrokerID,
 	}
 
@@ -483,15 +545,6 @@ func CompareAgents(ctx context.Context, hubCtx *HubContext) (*SyncResult, error)
 		localAgentMap[name] = true
 	}
 
-	// Find agents to register (local but not on Hub)
-	for _, name := range localAgents {
-		if hubAgentMap[name] {
-			result.InSync = append(result.InSync, name)
-		} else {
-			result.ToRegister = append(result.ToRegister, name)
-		}
-	}
-
 	// Parse lastSyncedAt from state.yaml (preferred) or legacy settings (fallback).
 	var lastSyncedAt time.Time
 	var lastSyncedAtStr string
@@ -511,11 +564,33 @@ func CompareAgents(ctx context.Context, hubCtx *HubContext) (*SyncResult, error)
 
 	if lastSyncedAtStr != "" {
 		if parsed, err := time.Parse(time.RFC3339Nano, lastSyncedAtStr); err == nil {
-			lastSyncedAt = parsed
+			lastSyncedAt = parsed.UTC()
 			debugf("lastSyncedAt: %s", lastSyncedAt.Format(time.RFC3339))
 		} else {
 			debugf("Warning: failed to parse lastSyncedAt %q: %v", lastSyncedAtStr, err)
 		}
+	}
+
+	// Find local-only agents. Distinguish between genuinely new/updated local
+	// changes and stale local artifacts left behind after earlier hub-side actions.
+	for _, name := range localAgents {
+		if hubAgentMap[name] {
+			result.InSync = append(result.InSync, name)
+			continue
+		}
+
+		localInfo := getLocalAgentInfo(hubCtx.GrovePath, name)
+		localTS := getLocalAgentTimestamp(localInfo)
+
+		if lastSyncedAt.IsZero() || localTS.IsZero() || localTS.After(lastSyncedAt) {
+			result.ToRegister = append(result.ToRegister, name)
+			debugf("Agent %s local-only and newer than watermark/unknown timestamp, marking ToRegister", name)
+			continue
+		}
+
+		result.StaleLocal = append(result.StaleLocal, name)
+		debugf("Agent %s local-only but stale (local=%s, watermark=%s), marking StaleLocal",
+			name, localTS.Format(time.RFC3339Nano), lastSyncedAt.Format(time.RFC3339Nano))
 	}
 
 	// Find agents on Hub but not locally present.
@@ -544,8 +619,8 @@ func CompareAgents(ctx context.Context, hubCtx *HubContext) (*SyncResult, error)
 		}
 	}
 
-	debugf("Sync result: toRegister=%v, toRemove=%d, pending=%d, remoteOnly=%d, inSync=%d",
-		result.ToRegister, len(result.ToRemove), len(result.Pending), len(result.RemoteOnly), len(result.InSync))
+	debugf("Sync result: toRegister=%v, staleLocal=%v, toRemove=%d, pending=%d, remoteOnly=%d, inSync=%d",
+		result.ToRegister, result.StaleLocal, len(result.ToRemove), len(result.Pending), len(result.RemoteOnly), len(result.InSync))
 
 	return result, nil
 }
@@ -732,6 +807,7 @@ func getLocalAgentInfo(grovePath, agentName string) *api.AgentInfo {
 	if data, err := os.ReadFile(agentInfoPath); err == nil {
 		var info api.AgentInfo
 		if err := json.Unmarshal(data, &info); err == nil {
+			applyFileTimestampFallback(&info, agentInfoPath)
 			return &info
 		}
 	}
@@ -748,6 +824,7 @@ func getLocalAgentInfo(grovePath, agentName string) *api.AgentInfo {
 			if info.HarnessConfig == "" {
 				info.HarnessConfig = cfg.Harness
 			}
+			applyFileTimestampFallback(info, scionJSONPath)
 			return info
 		}
 	}
@@ -763,11 +840,72 @@ func getLocalAgentInfo(grovePath, agentName string) *api.AgentInfo {
 			if info.HarnessConfig == "" {
 				info.HarnessConfig = cfg.Harness
 			}
+			applyFileTimestampFallback(info, scionYAMLPath)
 			return info
 		}
 	}
 
 	return nil
+}
+
+func getLocalAgentTimestamp(info *api.AgentInfo) time.Time {
+	if info == nil {
+		return time.Time{}
+	}
+	if !info.Updated.IsZero() {
+		return info.Updated.UTC()
+	}
+	if !info.Created.IsZero() {
+		return info.Created.UTC()
+	}
+	return time.Time{}
+}
+
+func applyFileTimestampFallback(info *api.AgentInfo, path string) {
+	if info == nil {
+		return
+	}
+	if !info.Updated.IsZero() || !info.Created.IsZero() {
+		return
+	}
+	stat, err := os.Stat(path)
+	if err != nil {
+		return
+	}
+	mtime := stat.ModTime().UTC()
+	info.Updated = mtime
+	info.Created = mtime
+}
+
+func saveGroveStateAtomic(grovePath string, state *config.GroveState) error {
+	statePath := filepath.Join(grovePath, "state.yaml")
+	if err := os.MkdirAll(filepath.Dir(statePath), 0755); err != nil {
+		return err
+	}
+
+	data, err := yaml.Marshal(state)
+	if err != nil {
+		return err
+	}
+
+	tmpFile, err := os.CreateTemp(filepath.Dir(statePath), "state.yaml.tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmpFile.Name()
+	defer os.Remove(tmpPath)
+
+	if _, err := tmpFile.Write(data); err != nil {
+		tmpFile.Close()
+		return err
+	}
+	if err := tmpFile.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmpPath, 0644); err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, statePath)
 }
 
 // isGroveRegistered checks if the grove is registered with the Hub.

@@ -405,6 +405,20 @@ func stopAllAgentsViaHub(hubCtx *HubContext) error {
 
 	wg.Wait()
 
+	if stopRm && hubCtx.GrovePath != "" {
+		removedAny := false
+		for _, r := range results {
+			if r.Removed && r.Error == "" {
+				removedAny = true
+				break
+			}
+		}
+		if removedAny {
+			// Keep sync watermark current after hub-side delete operations.
+			hubsync.UpdateLastSyncedAt(hubCtx.GrovePath, time.Time{}, hubCtx.IsGlobal)
+		}
+	}
+
 	if isJSONOutput() {
 		jsonResults := make([]map[string]interface{}, len(results))
 		hasErrors := false
@@ -478,6 +492,10 @@ func stopAgentViaHub(hubCtx *HubContext, agentName string) error {
 		}
 		if err := agentSvc.Delete(ctx, agentName, opts); err != nil {
 			return wrapHubError(fmt.Errorf("agent stopped but failed to delete via Hub: %w", err))
+		}
+		if hubCtx.GrovePath != "" {
+			// Keep sync watermark current after hub-side delete operations.
+			hubsync.UpdateLastSyncedAt(hubCtx.GrovePath, time.Time{}, hubCtx.IsGlobal)
 		}
 		if isJSONOutput() {
 			return outputJSON(ActionResult{

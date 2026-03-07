@@ -156,7 +156,7 @@ type HubContext struct {
 	Endpoint  string
 	Settings  *config.Settings
 	GroveID   string
-	BrokerID string
+	BrokerID  string
 	GrovePath string
 	IsGlobal  bool
 }
@@ -190,7 +190,7 @@ func CheckHubAvailability(grovePath string) (*HubContext, error) {
 
 // CheckHubAvailabilityWithOptions is like CheckHubAvailability but allows skipping sync.
 func CheckHubAvailabilityWithOptions(grovePath string, skipSync bool) (*HubContext, error) {
-	return CheckHubAvailabilityForAgent(grovePath, "", skipSync)
+	return CheckHubAvailabilityForAgents(grovePath, nil, skipSync)
 }
 
 // CheckHubAvailabilityForAgent checks Hub availability for an operation on a specific agent.
@@ -198,11 +198,24 @@ func CheckHubAvailabilityWithOptions(grovePath string, skipSync bool) (*HubConte
 // from sync requirements. This allows operations like delete to proceed without first
 // syncing the target agent (e.g., deleting a local-only agent without registering it).
 func CheckHubAvailabilityForAgent(grovePath, targetAgent string, skipSync bool) (*HubContext, error) {
+	return CheckHubAvailabilityForAgents(grovePath, []string{targetAgent}, skipSync)
+}
+
+// CheckHubAvailabilityForAgents checks Hub availability for operations on one or more agents.
+// All target agents are excluded from sync requirements so batch operations are not blocked
+// by sync drift on the exact agents being modified.
+func CheckHubAvailabilityForAgents(grovePath string, excludedAgents []string, skipSync bool) (*HubContext, error) {
+	targetAgent := ""
+	if len(excludedAgents) > 0 {
+		targetAgent = excludedAgents[0] // compatibility field for older internals
+	}
+
 	opts := hubsync.EnsureHubReadyOptions{
-		AutoConfirm: autoConfirm,
-		NoHub:       noHub,
-		SkipSync:    skipSync,
-		TargetAgent: targetAgent,
+		AutoConfirm:    autoConfirm,
+		NoHub:          noHub,
+		SkipSync:       skipSync,
+		TargetAgent:    targetAgent,
+		ExcludedAgents: excludedAgents,
 	}
 
 	hubCtx, err := hubsync.EnsureHubReady(grovePath, opts)
@@ -220,7 +233,7 @@ func CheckHubAvailabilityForAgent(grovePath, targetAgent string, skipSync bool) 
 		Endpoint:  hubCtx.Endpoint,
 		Settings:  hubCtx.Settings,
 		GroveID:   hubCtx.GroveID,
-		BrokerID:    hubCtx.BrokerID,
+		BrokerID:  hubCtx.BrokerID,
 		GrovePath: hubCtx.GrovePath,
 		IsGlobal:  hubCtx.IsGlobal,
 	}, nil
@@ -629,20 +642,20 @@ func startAgentViaHub(hubCtx *HubContext, agentName, task string, resume bool, i
 
 	// Build create request (Hub creates and starts in one operation)
 	req := &hubclient.CreateAgentRequest{
-		Name:          agentName,
-		GroveID:       groveID,
-		Template:      resolvedTemplate,
-		HarnessConfig:       harnessConfigFlag,
-		HarnessAuth:         harnessAuthFlag,
+		Name:            agentName,
+		GroveID:         groveID,
+		Template:        resolvedTemplate,
+		HarnessConfig:   harnessConfigFlag,
+		HarnessAuth:     harnessAuthFlag,
 		RuntimeBrokerID: runtimeBrokerID,
-		Profile:       profile,
-		Task:          task,
-		Branch:        branch,
-		Workspace:     workspace,
-		Resume:        resume,
-		Attach:        attach,
-		GatherEnv:    true, // Enable env-gather flow
-		Notify:       notify,
+		Profile:         profile,
+		Task:            task,
+		Branch:          branch,
+		Workspace:       workspace,
+		Resume:          resume,
+		Attach:          attach,
+		GatherEnv:       true, // Enable env-gather flow
+		Notify:          notify,
 	}
 
 	// Thread inline config from --config flag into the Hub request.

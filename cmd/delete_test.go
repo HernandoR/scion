@@ -15,15 +15,18 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/ptone/scion-agent/pkg/config"
 	"github.com/ptone/scion-agent/pkg/hubclient"
+	"github.com/ptone/scion-agent/pkg/hubsync"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -318,6 +321,75 @@ func TestDeleteAgentsViaHub_NoLocalFiles(t *testing.T) {
 
 	require.Len(t, *deletedAgents, 1)
 	assert.Equal(t, "hub-only-agent", (*deletedAgents)[0])
+}
+
+func TestDeleteAgentsViaHub_LocalCleanupFailureCreatesStaleLocalNotToRegister(t *testing.T) {
+	orig := saveDeleteTestState()
+	defer orig.restore()
+
+	tmpHome := t.TempDir()
+	os.Setenv("HOME", tmpHome)
+	preserveBranch = true
+
+	groveID := "grove-stale-202"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.URL.Path == "/healthz" && r.Method == http.MethodGet:
+			json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok"})
+		case r.Method == http.MethodDelete && r.URL.Path == "/api/v1/groves/"+groveID+"/agents/stale-agent":
+			w.WriteHeader(http.StatusNoContent)
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/groves/"+groveID+"/agents":
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"agents":     []interface{}{},
+				"serverTime": time.Now().UTC().Format(time.RFC3339Nano),
+				"totalCount": 0,
+				"nextCursor": "",
+			})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	groveDir := filepath.Join(tmpHome, "project", ".scion")
+	require.NoError(t, os.MkdirAll(groveDir, 0755))
+	createAgentDir(t, groveDir, "stale-agent")
+
+	// Force local cleanup to fail while keeping hubCtx.GrovePath valid for state checkpointing.
+	grovePath = filepath.Join(tmpHome, "nonexistent-grove-path")
+
+	client, err := hubclient.New(server.URL)
+	require.NoError(t, err)
+
+	hubCtx := &HubContext{
+		Client:    client,
+		Endpoint:  server.URL,
+		GroveID:   groveID,
+		GrovePath: groveDir,
+		IsGlobal:  false,
+	}
+
+	err = deleteAgentsViaHub(hubCtx, []string{"stale-agent"})
+	require.NoError(t, err)
+
+	state, err := config.LoadGroveState(groveDir)
+	require.NoError(t, err)
+	require.NotEmpty(t, state.LastSyncedAt, "expected watermark checkpoint after hub delete")
+
+	syncCtx := &hubsync.HubContext{
+		Client:    client,
+		GroveID:   groveID,
+		BrokerID:  "",
+		GrovePath: groveDir,
+		IsGlobal:  false,
+		Settings:  &config.Settings{},
+	}
+	result, err := hubsync.CompareAgents(context.Background(), syncCtx)
+	require.NoError(t, err)
+	assert.Empty(t, result.ToRegister, "stale local artifact should not be forced into ToRegister")
+	assert.Contains(t, result.StaleLocal, "stale-agent")
+	assert.True(t, result.IsInSync(), "stale-local-only result should still be in sync")
 }
 
 func TestDeleteStopped_RequiresGroveContext(t *testing.T) {
