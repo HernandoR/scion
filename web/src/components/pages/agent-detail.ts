@@ -29,6 +29,7 @@ import type {
   Agent,
   AgentAppliedConfig,
   AgentInlineConfig,
+  TelemetryConfig,
   Grove,
   Notification,
 } from '../../shared/types.js';
@@ -295,6 +296,40 @@ export class ScionPageAgentDetail extends LitElement {
       border-radius: var(--scion-radius, 0.5rem);
       white-space: pre-wrap;
       line-height: 1.5;
+    }
+
+    /* ---- Telemetry tag list ---- */
+    .tag-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.375rem;
+    }
+    .tag-item {
+      display: inline-block;
+      font-family: var(--scion-font-mono, monospace);
+      font-size: 0.75rem;
+      padding: 0.125rem 0.5rem;
+      background: var(--scion-bg-subtle, #f1f5f9);
+      border: 1px solid var(--scion-border, #e2e8f0);
+      border-radius: var(--scion-radius, 0.5rem);
+      color: var(--scion-text, #1e293b);
+    }
+    .telemetry-section {
+      margin-bottom: 1.25rem;
+    }
+    .telemetry-section:last-child {
+      margin-bottom: 0;
+    }
+    .telemetry-section-title {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--scion-text-muted, #64748b);
+      margin-bottom: 0.5rem;
+    }
+    .telemetry-empty {
+      font-size: 0.875rem;
+      color: var(--scion-text-muted, #64748b);
+      font-style: italic;
     }
 
     /* ---- Progress bars ---- */
@@ -1065,6 +1100,7 @@ export class ScionPageAgentDetail extends LitElement {
     return html`
       ${this.renderIdentityCard(agent)} ${this.renderHarnessModelCard(agent, cfg, inline)}
       ${this.renderRuntimeCard(agent, inline)} ${this.renderConfigLimitsCard(inline)}
+      ${this.renderTelemetryCard(inline?.telemetry)}
       ${this.renderInitialTaskCard(cfg)}
     `;
   }
@@ -1251,6 +1287,157 @@ export class ScionPageAgentDetail extends LitElement {
             <span class="info-value">${maxDuration || 'None'}</span>
           </div>
         </div>
+      </div>
+    `;
+  }
+
+  private renderTelemetryCard(telemetry: TelemetryConfig | undefined) {
+    if (!telemetry) return nothing;
+
+    const enabledLabel = telemetry.enabled === false ? 'Disabled' : 'Enabled';
+    const filter = telemetry.filter;
+    const cloud = telemetry.cloud;
+    const hub = telemetry.hub;
+    const local = telemetry.local;
+
+    const hasDestinations = cloud || hub || local;
+    const hasFilter = filter?.events || filter?.attributes || filter?.sampling;
+
+    return html`
+      <div class="card">
+        <h3 class="card-title">Telemetry</h3>
+        <div class="info-grid" style="margin-bottom: ${hasDestinations || hasFilter ? '1.25rem' : '0'}">
+          <div class="info-item">
+            <span class="info-label">Status</span>
+            <span class="info-value">${enabledLabel}</span>
+          </div>
+        </div>
+
+        ${hasDestinations
+          ? html`
+              <div class="telemetry-section">
+                <div class="telemetry-section-title">Export Destinations</div>
+                <div class="info-grid">
+                  ${cloud
+                    ? html`
+                        <div class="info-item">
+                          <span class="info-label">Cloud</span>
+                          <span class="info-value"
+                            >${cloud.enabled === false ? 'Disabled' : 'Enabled'}${cloud.provider
+                              ? ` (${cloud.provider})`
+                              : ''}${cloud.endpoint
+                              ? html`<br /><span class="mono" style="font-size: 0.8rem"
+                                    >${cloud.endpoint}</span
+                                  >`
+                              : ''}</span
+                          >
+                        </div>
+                      `
+                    : ''}
+                  ${hub
+                    ? html`
+                        <div class="info-item">
+                          <span class="info-label">Hub</span>
+                          <span class="info-value"
+                            >${hub.enabled === false ? 'Disabled' : 'Enabled'}${hub.report_interval
+                              ? ` (${hub.report_interval})`
+                              : ''}</span
+                          >
+                        </div>
+                      `
+                    : ''}
+                  ${local
+                    ? html`
+                        <div class="info-item">
+                          <span class="info-label">Local</span>
+                          <span class="info-value"
+                            >${local.enabled === false ? 'Disabled' : 'Enabled'}${local.file
+                              ? html`<br /><span class="mono" style="font-size: 0.8rem"
+                                    >${local.file}</span
+                                  >`
+                              : ''}</span
+                          >
+                        </div>
+                      `
+                    : ''}
+                </div>
+              </div>
+            `
+          : ''}
+        ${hasFilter
+          ? html`
+              <div class="telemetry-section">
+                <div class="telemetry-section-title">Filters</div>
+                ${filter?.events?.exclude?.length
+                  ? html`
+                      <div class="info-item" style="margin-bottom: 0.75rem">
+                        <span class="info-label">Excluded Events</span>
+                        <div class="tag-list">
+                          ${filter.events.exclude.map(
+                            (e) => html`<span class="tag-item">${e}</span>`
+                          )}
+                        </div>
+                      </div>
+                    `
+                  : ''}
+                ${filter?.events?.include?.length
+                  ? html`
+                      <div class="info-item" style="margin-bottom: 0.75rem">
+                        <span class="info-label">Included Events</span>
+                        <div class="tag-list">
+                          ${filter.events.include.map(
+                            (e) => html`<span class="tag-item">${e}</span>`
+                          )}
+                        </div>
+                      </div>
+                    `
+                  : ''}
+                ${filter?.attributes?.redact?.length
+                  ? html`
+                      <div class="info-item" style="margin-bottom: 0.75rem">
+                        <span class="info-label">Redacted Attributes</span>
+                        <div class="tag-list">
+                          ${filter.attributes.redact.map(
+                            (a) => html`<span class="tag-item">${a}</span>`
+                          )}
+                        </div>
+                      </div>
+                    `
+                  : ''}
+                ${filter?.attributes?.hash?.length
+                  ? html`
+                      <div class="info-item" style="margin-bottom: 0.75rem">
+                        <span class="info-label">Hashed Attributes</span>
+                        <div class="tag-list">
+                          ${filter.attributes.hash.map(
+                            (a) => html`<span class="tag-item">${a}</span>`
+                          )}
+                        </div>
+                      </div>
+                    `
+                  : ''}
+                ${filter?.sampling
+                  ? html`
+                      <div class="info-item">
+                        <span class="info-label">Sampling</span>
+                        <span class="info-value"
+                          >${filter.sampling.default != null
+                            ? `Default: ${(filter.sampling.default * 100).toFixed(0)}%`
+                            : ''}${filter.sampling.rates
+                            ? Object.entries(filter.sampling.rates)
+                                .map(([k, v]) => `${k}: ${(v * 100).toFixed(0)}%`)
+                                .join(', ')
+                            : ''}</span
+                        >
+                      </div>
+                    `
+                  : ''}
+              </div>
+            `
+          : ''}
+        ${!hasDestinations && !hasFilter
+          ? html`<div class="telemetry-empty">No detailed configuration</div>`
+          : ''}
       </div>
     `;
   }

@@ -201,6 +201,78 @@ export function isAgentRunning(agent: Agent): boolean {
 }
 
 /**
+ * Telemetry event filter configuration.
+ */
+export interface TelemetryEventsConfig {
+  include?: string[];
+  exclude?: string[];
+}
+
+/**
+ * Telemetry attribute redaction and hashing configuration.
+ */
+export interface TelemetryAttributesConfig {
+  redact?: string[];
+  hash?: string[];
+}
+
+/**
+ * Telemetry sampling configuration.
+ */
+export interface TelemetrySamplingConfig {
+  default?: number;
+  rates?: Record<string, number>;
+}
+
+/**
+ * Telemetry filter configuration (event filtering, attribute redaction, sampling).
+ */
+export interface TelemetryFilterConfig {
+  enabled?: boolean;
+  events?: TelemetryEventsConfig;
+  attributes?: TelemetryAttributesConfig;
+  sampling?: TelemetrySamplingConfig;
+}
+
+/**
+ * Cloud OTLP export configuration.
+ */
+export interface TelemetryCloudConfig {
+  enabled?: boolean;
+  endpoint?: string;
+  protocol?: string;
+  provider?: string;
+}
+
+/**
+ * Hub telemetry reporting configuration.
+ */
+export interface TelemetryHubConfig {
+  enabled?: boolean;
+  report_interval?: string;
+}
+
+/**
+ * Local debug telemetry output configuration.
+ */
+export interface TelemetryLocalConfig {
+  enabled?: boolean;
+  file?: string;
+  console?: boolean;
+}
+
+/**
+ * Top-level telemetry configuration for an agent.
+ */
+export interface TelemetryConfig {
+  enabled?: boolean;
+  cloud?: TelemetryCloudConfig;
+  hub?: TelemetryHubConfig;
+  local?: TelemetryLocalConfig;
+  filter?: TelemetryFilterConfig;
+}
+
+/**
  * Inline configuration values set at agent creation time.
  */
 export interface AgentInlineConfig {
@@ -211,6 +283,7 @@ export interface AgentInlineConfig {
   branch?: string;
   task?: string;
   image?: string;
+  telemetry?: TelemetryConfig;
 }
 
 export type SupportLevel = 'no' | 'partial' | 'yes';
