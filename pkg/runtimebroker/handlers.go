@@ -384,11 +384,12 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 			s.agentLifecycleLog.Debug("SCION_AUTH_TOKEN set from broker env", "length", len(devToken))
 		}
 	}
-	// Set Hub URL with priority:
-	// 1. Grove settings hub.endpoint (most specific: user's project-level config)
-	// 2. Broker's ContainerHubEndpoint (container-accessible override, e.g. host.containers.internal)
-	// 3. Request's HubEndpoint (from Hub dispatcher's server config)
-	// 4. Broker's configured HubEndpoint (server-level fallback)
+	// Set Hub URL for the agent container. Resolution priority:
+	// 1. Request's HubEndpoint (from Hub dispatcher)
+	// 2. Broker's configured HubEndpoint (server-level fallback)
+	// 3. Grove settings hub.endpoint (linked groves with external endpoints)
+	// Then apply ContainerHubEndpoint override if the final endpoint is localhost,
+	// since containers can't reach the host's loopback interface directly.
 	hubEndpoint := req.HubEndpoint
 	if hubEndpoint == "" && s.config.HubEndpoint != "" {
 		hubEndpoint = s.config.HubEndpoint
@@ -396,26 +397,12 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 			s.agentLifecycleLog.Debug("Using server Hub endpoint as fallback", "endpoint", hubEndpoint)
 		}
 	}
-	// Apply ContainerHubEndpoint override only when the resolved endpoint is a
-	// localhost address (which containers cannot reach directly) and the runtime
-	// is not Kubernetes (where pods have their own networking and bridge addresses
-	// like host.containers.internal do not apply).
-	if s.config.ContainerHubEndpoint != "" && isLocalhostEndpoint(hubEndpoint) &&
-		(s.runtime == nil || s.runtime.Name() != "kubernetes") {
-		hubEndpoint = s.config.ContainerHubEndpoint
-		if s.config.Debug {
-			s.agentLifecycleLog.Debug("Hub endpoint overridden by ContainerHubEndpoint", "endpoint", hubEndpoint)
-		}
-	}
-	// Override with grove settings if available. The grove's hub.endpoint reflects
-	// the externally-accessible Hub URL (e.g. a tunnel/DNS endpoint) that agents
-	// inside containers need to reach the Hub. This takes precedence because the
-	// Hub's own server config may only know its localhost address.
+	// Check grove settings for an endpoint. Only apply if we don't already
+	// have one from the dispatch request or broker config, since those are
+	// more authoritative (the hub/broker know the actual running endpoint).
 	// Use LoadSettingsFromDir to read only the grove's settings file without
 	// picking up the broker's environment variables or global settings.
-	// Use resolveGroveSettingsDir to handle both linked groves (path ends in
-	// .scion) and hub-native groves (settings are in .scion subdirectory).
-	if req.GrovePath != "" {
+	if hubEndpoint == "" && req.GrovePath != "" {
 		settingsDir := resolveGroveSettingsDir(req.GrovePath)
 		if groveSettings, err := config.LoadSettingsFromDir(settingsDir); err == nil {
 			if !groveSettings.IsHubExplicitlyDisabled() {
@@ -426,6 +413,16 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 			}
+		}
+	}
+	// Apply ContainerHubEndpoint override when the resolved endpoint is a
+	// localhost address (which containers cannot reach directly) and the
+	// runtime is not Kubernetes (where pods use their own networking).
+	if s.config.ContainerHubEndpoint != "" && isLocalhostEndpoint(hubEndpoint) &&
+		(s.runtime == nil || s.runtime.Name() != "kubernetes") {
+		hubEndpoint = s.config.ContainerHubEndpoint
+		if s.config.Debug {
+			s.agentLifecycleLog.Debug("Hub endpoint overridden by ContainerHubEndpoint", "endpoint", hubEndpoint)
 		}
 	}
 	if hubEndpoint != "" {
@@ -1072,8 +1069,8 @@ func (s *Server) startAgent(w http.ResponseWriter, r *http.Request, id string) {
 	// Hub endpoint resolution priority chain:
 	// 1. Broker config HubEndpoint
 	// 2. Hub-dispatched resolvedEnv SCION_HUB_ENDPOINT (fallback for standalone brokers)
-	// 3. ContainerHubEndpoint override (only for localhost endpoints on non-k8s runtimes)
-	// 4. Grove settings hub.endpoint (highest priority)
+	// 3. Grove settings hub.endpoint (only when no endpoint from broker/dispatch)
+	// Then: ContainerHubEndpoint override (if final endpoint is localhost)
 	hubEndpoint := ""
 	if s.config.HubEndpoint != "" {
 		hubEndpoint = s.config.HubEndpoint
@@ -1086,32 +1083,30 @@ func (s *Server) startAgent(w http.ResponseWriter, r *http.Request, id string) {
 			s.agentLifecycleLog.Debug("startAgent: hub endpoint from resolvedEnv", "endpoint", ep)
 		}
 	}
-	if s.config.ContainerHubEndpoint != "" && isLocalhostEndpoint(hubEndpoint) &&
-		(s.runtime == nil || s.runtime.Name() != "kubernetes") {
-		hubEndpoint = s.config.ContainerHubEndpoint
-	}
-	// Override with grove settings if available. The grove's hub.endpoint
-	// reflects the externally-accessible Hub URL that agents inside
-	// containers need to reach the Hub. This takes precedence because the
-	// broker's own config may only know its localhost address.
-	// Use resolveGroveSettingsDir to handle both linked groves (path ends in
-	// .scion) and hub-native groves (settings are in .scion subdirectory).
-	grovePath := startReq.GrovePath
-	if grovePath == "" {
-		grovePath = opts.GrovePath
-	}
-	if grovePath != "" {
-		settingsDir := resolveGroveSettingsDir(grovePath)
-		if groveSettings, err := config.LoadSettingsFromDir(settingsDir); err == nil {
-			if !groveSettings.IsHubExplicitlyDisabled() {
-				if ep := groveSettings.GetHubEndpoint(); ep != "" {
-					hubEndpoint = ep
-					if s.config.Debug {
-						s.agentLifecycleLog.Debug("startAgent: hub endpoint resolved from grove settings", "endpoint", ep, "grovePath", grovePath)
+	// Check grove settings only if no endpoint from broker config or dispatch.
+	if hubEndpoint == "" {
+		grovePath := startReq.GrovePath
+		if grovePath == "" {
+			grovePath = opts.GrovePath
+		}
+		if grovePath != "" {
+			settingsDir := resolveGroveSettingsDir(grovePath)
+			if groveSettings, err := config.LoadSettingsFromDir(settingsDir); err == nil {
+				if !groveSettings.IsHubExplicitlyDisabled() {
+					if ep := groveSettings.GetHubEndpoint(); ep != "" {
+						hubEndpoint = ep
+						if s.config.Debug {
+							s.agentLifecycleLog.Debug("startAgent: hub endpoint resolved from grove settings", "endpoint", ep, "grovePath", grovePath)
+						}
 					}
 				}
 			}
 		}
+	}
+	// Apply ContainerHubEndpoint override when the final endpoint is localhost.
+	if s.config.ContainerHubEndpoint != "" && isLocalhostEndpoint(hubEndpoint) &&
+		(s.runtime == nil || s.runtime.Name() != "kubernetes") {
+		hubEndpoint = s.config.ContainerHubEndpoint
 	}
 	if hubEndpoint != "" {
 		opts.Env["SCION_HUB_ENDPOINT"] = hubEndpoint

@@ -1069,18 +1069,17 @@ func runServerStart(cmd *cobra.Command, args []string) error {
 		}
 
 		// Resolve the Hub's public endpoint URL.
-		// Priority: server config (hub.endpoint / public_url) > grove settings (hub.endpoint)
+		// Priority when hub is enabled (combo mode):
+		//   1. Explicit server config (hub.endpoint / public_url)
+		//   2. SCION_SERVER_BASE_URL env var
+		//   3. Auto-compute from localhost:port
+		// When hub is NOT enabled (standalone broker):
+		//   1. Explicit server config
+		//   2. Grove settings (hub.endpoint)
+		// In combo mode, settings are NOT used because they may point to a
+		// different hub entirely (e.g. a remote demo hub) while the local
+		// hub is running on localhost.
 		hubEndpoint := cfg.Hub.Endpoint
-		if hubEndpoint == "" {
-			hubEndpoint = brokerSettings.GetHubEndpoint()
-			if hubEndpoint != "" && enableDebug {
-				log.Printf("Hub endpoint resolved from grove settings: %s", hubEndpoint)
-			}
-		}
-
-		// Auto-compute hub endpoint when running in combo mode (hub enabled)
-		// and no explicit endpoint was configured. This ensures the Hub
-		// dispatcher always has a proper endpoint to send to brokers/agents.
 		if hubEndpoint == "" && enableHub {
 			// Prefer SCION_SERVER_BASE_URL if set — this is the public URL of
 			// the combined server (e.g. "https://hub.demo.scion-ai.dev") and
@@ -1097,8 +1096,14 @@ func runServerStart(cmd *cobra.Command, args []string) error {
 				}
 				hubEndpoint = fmt.Sprintf("http://localhost:%d", port)
 				if enableDebug {
-					log.Printf("Auto-computed hub endpoint for dispatcher: %s", hubEndpoint)
+					log.Printf("Auto-computed hub endpoint for combo mode: %s", hubEndpoint)
 				}
+			}
+		} else if hubEndpoint == "" {
+			// Not in combo mode — fall back to grove settings.
+			hubEndpoint = brokerSettings.GetHubEndpoint()
+			if hubEndpoint != "" && enableDebug {
+				log.Printf("Hub endpoint resolved from grove settings: %s", hubEndpoint)
 			}
 		}
 

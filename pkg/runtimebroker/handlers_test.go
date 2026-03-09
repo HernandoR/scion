@@ -917,7 +917,7 @@ func TestStartAgentEndpoint(t *testing.T) {
 // TestCreateAgentHubEndpointFromGroveSettings tests that hub endpoint is resolved
 // from the grove's settings.yaml when grovePath is provided.
 func TestCreateAgentHubEndpointFromGroveSettings(t *testing.T) {
-	t.Run("grove settings override request hub endpoint", func(t *testing.T) {
+	t.Run("request hub endpoint takes priority over grove settings", func(t *testing.T) {
 		srv, mgr := newTestServerWithEnvCapture()
 
 		// Create a grove directory with settings.yaml containing hub.endpoint
@@ -952,12 +952,13 @@ func TestCreateAgentHubEndpointFromGroveSettings(t *testing.T) {
 			t.Fatal("expected environment variables to be set")
 		}
 
-		// Grove settings hub.endpoint should override the request's localhost value
-		if got := mgr.lastEnv["SCION_HUB_ENDPOINT"]; got != "https://scionhub.loophole.site" {
-			t.Errorf("expected SCION_HUB_ENDPOINT='https://scionhub.loophole.site' from grove settings, got %q", got)
+		// Request hub endpoint takes priority over grove settings (grove settings
+		// are only a fallback when no endpoint is provided by dispatch/broker).
+		if got := mgr.lastEnv["SCION_HUB_ENDPOINT"]; got != "http://localhost:9810" {
+			t.Errorf("expected SCION_HUB_ENDPOINT='http://localhost:9810' from request, got %q", got)
 		}
-		if got := mgr.lastEnv["SCION_HUB_URL"]; got != "https://scionhub.loophole.site" {
-			t.Errorf("expected SCION_HUB_URL='https://scionhub.loophole.site' from grove settings, got %q", got)
+		if got := mgr.lastEnv["SCION_HUB_URL"]; got != "http://localhost:9810" {
+			t.Errorf("expected SCION_HUB_URL='http://localhost:9810' from request, got %q", got)
 		}
 	})
 
@@ -1164,12 +1165,13 @@ func TestCreateAgentHubNativeGroveSettingsEndpoint(t *testing.T) {
 		t.Fatal("expected environment variables to be set")
 	}
 
-	// Grove settings hub.endpoint should override the broker's localhost endpoint
-	if got := mgr.lastEnv["SCION_HUB_ENDPOINT"]; got != "https://hub.external.example.com" {
-		t.Errorf("expected SCION_HUB_ENDPOINT='https://hub.external.example.com' from hub-native grove settings, got %q", got)
+	// Request hub endpoint takes priority over grove settings (grove settings
+	// are only a fallback when no endpoint is provided by dispatch/broker).
+	if got := mgr.lastEnv["SCION_HUB_ENDPOINT"]; got != "http://localhost:9810" {
+		t.Errorf("expected SCION_HUB_ENDPOINT='http://localhost:9810' from request, got %q", got)
 	}
-	if got := mgr.lastEnv["SCION_HUB_URL"]; got != "https://hub.external.example.com" {
-		t.Errorf("expected SCION_HUB_URL='https://hub.external.example.com' from hub-native grove settings, got %q", got)
+	if got := mgr.lastEnv["SCION_HUB_URL"]; got != "http://localhost:9810" {
+		t.Errorf("expected SCION_HUB_URL='http://localhost:9810' from request, got %q", got)
 	}
 }
 
@@ -1259,7 +1261,7 @@ func TestCreateAgentContainerHubEndpointOverride(t *testing.T) {
 		}
 	})
 
-	t.Run("grove settings still override container endpoint", func(t *testing.T) {
+	t.Run("container endpoint overrides localhost even with grove settings", func(t *testing.T) {
 		cfg := DefaultServerConfig()
 		cfg.BrokerID = "test-broker-id"
 		cfg.BrokerName = "test-host"
@@ -1299,9 +1301,10 @@ hub:
 			t.Fatalf("expected status %d, got %d: %s", http.StatusCreated, w.Code, w.Body.String())
 		}
 
-		// Grove settings should take priority over ContainerHubEndpoint
-		if got := mgr.lastEnv["SCION_HUB_ENDPOINT"]; got != "https://tunnel.example.com" {
-			t.Errorf("expected SCION_HUB_ENDPOINT='https://tunnel.example.com' from grove settings, got %q", got)
+		// ContainerHubEndpoint override applies last to localhost endpoints;
+		// grove settings are only a fallback when no dispatch/broker endpoint exists.
+		if got := mgr.lastEnv["SCION_HUB_ENDPOINT"]; got != "http://host.containers.internal:8080" {
+			t.Errorf("expected SCION_HUB_ENDPOINT='http://host.containers.internal:8080' from container bridge override, got %q", got)
 		}
 	})
 
@@ -1786,10 +1789,10 @@ func TestCreateAgentGroveSlugNotUsedWhenGrovePathSet(t *testing.T) {
 	}
 }
 
-// TestStartAgentGroveSettingsOverridesHubEndpoint verifies that the startAgent
-// handler uses the grove settings hub.endpoint rather than the broker's config
-// HubEndpoint (which defaults to localhost in combo mode).
-func TestStartAgentGroveSettingsOverridesHubEndpoint(t *testing.T) {
+// TestStartAgentGroveSettingsFallbackHubEndpoint verifies that the startAgent
+// handler uses grove settings hub.endpoint only as a fallback when no broker
+// config or dispatch endpoint is available.
+func TestStartAgentGroveSettingsFallbackHubEndpoint(t *testing.T) {
 	t.Run("linked grove with settings at grovePath", func(t *testing.T) {
 		cfg := DefaultServerConfig()
 		cfg.BrokerID = "test-broker-id"
@@ -1826,11 +1829,12 @@ func TestStartAgentGroveSettingsOverridesHubEndpoint(t *testing.T) {
 			t.Fatal("expected Start to be called")
 		}
 
-		if got := mgr.lastOpts.Env["SCION_HUB_ENDPOINT"]; got != "https://hub.production.example.com" {
-			t.Errorf("expected SCION_HUB_ENDPOINT='https://hub.production.example.com' from grove settings, got %q", got)
+		// Broker config HubEndpoint takes priority over grove settings
+		if got := mgr.lastOpts.Env["SCION_HUB_ENDPOINT"]; got != "http://localhost:9810" {
+			t.Errorf("expected SCION_HUB_ENDPOINT='http://localhost:9810' from broker config, got %q", got)
 		}
-		if got := mgr.lastOpts.Env["SCION_HUB_URL"]; got != "https://hub.production.example.com" {
-			t.Errorf("expected SCION_HUB_URL='https://hub.production.example.com' from grove settings, got %q", got)
+		if got := mgr.lastOpts.Env["SCION_HUB_URL"]; got != "http://localhost:9810" {
+			t.Errorf("expected SCION_HUB_URL='http://localhost:9810' from broker config, got %q", got)
 		}
 	})
 
@@ -1872,12 +1876,12 @@ func TestStartAgentGroveSettingsOverridesHubEndpoint(t *testing.T) {
 			t.Fatal("expected Start to be called")
 		}
 
-		// resolveGroveSettingsDir should find settings in .scion subdirectory
-		if got := mgr.lastOpts.Env["SCION_HUB_ENDPOINT"]; got != "https://hub.native.example.com" {
-			t.Errorf("expected SCION_HUB_ENDPOINT='https://hub.native.example.com' from grove .scion settings, got %q", got)
+		// Broker config HubEndpoint takes priority over grove settings
+		if got := mgr.lastOpts.Env["SCION_HUB_ENDPOINT"]; got != "http://localhost:9810" {
+			t.Errorf("expected SCION_HUB_ENDPOINT='http://localhost:9810' from broker config, got %q", got)
 		}
-		if got := mgr.lastOpts.Env["SCION_HUB_URL"]; got != "https://hub.native.example.com" {
-			t.Errorf("expected SCION_HUB_URL='https://hub.native.example.com' from grove .scion settings, got %q", got)
+		if got := mgr.lastOpts.Env["SCION_HUB_URL"]; got != "http://localhost:9810" {
+			t.Errorf("expected SCION_HUB_URL='http://localhost:9810' from broker config, got %q", got)
 		}
 	})
 }
