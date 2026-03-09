@@ -2220,3 +2220,49 @@ func TestIsLocalhostEndpoint(t *testing.T) {
 		})
 	}
 }
+
+// TestCreateAgentStartFailure_CleansUpFiles verifies that when mgr.Start() fails
+// (e.g. auth resolution error), the broker cleans up provisioned agent files so
+// they don't become orphans that trigger spurious hub sync-registration.
+func TestCreateAgentStartFailure_CleansUpFiles(t *testing.T) {
+	// Create a temp directory to act as the grove path with agent files
+	tmpDir := t.TempDir()
+	grovePath := filepath.Join(tmpDir, ".scion")
+	agentDir := filepath.Join(grovePath, "agents", "fail-agent")
+	if err := os.MkdirAll(agentDir, 0755); err != nil {
+		t.Fatalf("failed to create agent dir: %v", err)
+	}
+	// Write a scion-agent.yaml so the agent is discoverable
+	if err := os.WriteFile(filepath.Join(agentDir, "scion-agent.yaml"), []byte("harness: gemini\n"), 0644); err != nil {
+		t.Fatalf("failed to write scion-agent.yaml: %v", err)
+	}
+
+	cfg := DefaultServerConfig()
+	cfg.BrokerID = "test-broker-id"
+	cfg.BrokerName = "test-host"
+	mgr := &provisionCapturingManager{}
+	mgr.startErr = fmt.Errorf("auth resolution failed: gemini: auth type \"api-key\" selected but no API key found")
+	rt := &runtime.MockRuntime{}
+	srv := New(cfg, mgr, rt)
+
+	body := fmt.Sprintf(`{
+		"name": "fail-agent",
+		"grovePath": %q,
+		"config": {"task": "do something"}
+	}`, grovePath)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agents", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(w, req)
+
+	// Should return runtime error
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusInternalServerError, w.Code, w.Body.String())
+	}
+
+	// Verify agent directory was cleaned up
+	if _, err := os.Stat(agentDir); !os.IsNotExist(err) {
+		t.Errorf("expected agent directory to be cleaned up after start failure, but it still exists: %s", agentDir)
+	}
+}

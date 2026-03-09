@@ -795,6 +795,19 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 	agentInfo, err := mgr.Start(ctx, opts)
 	if err != nil {
 		markAttemptFailed(http.StatusInternalServerError, "failed to create agent")
+		// Clean up provisioned agent files so they don't become orphans.
+		// In hub mode the hub will delete its agent record on dispatch failure,
+		// leaving no retry path — orphaned local files would trigger spurious
+		// sync-registration attempts on the next CLI list.
+		if opts.GrovePath != "" {
+			if _, cleanupErr := agent.DeleteAgentFiles(opts.Name, opts.GrovePath, true); cleanupErr != nil {
+				s.agentLifecycleLog.Warn("Failed to clean up agent files after start failure",
+					"agent", opts.Name, "error", cleanupErr)
+			} else {
+				s.agentLifecycleLog.Info("Cleaned up provisioned agent files after start failure",
+					"agent", opts.Name)
+			}
+		}
 		RuntimeError(w, "Failed to create agent: "+err.Error())
 		return
 	}

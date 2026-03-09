@@ -787,6 +787,26 @@ func (d *createAgentDispatcher) DispatchCheckAgentPrompt(_ context.Context, _ *s
 func (d *createAgentDispatcher) DispatchAgentCreateWithGather(_ context.Context, agent *store.Agent) (*RemoteEnvRequirementsResponse, error) {
 	return nil, d.DispatchAgentCreate(context.Background(), agent)
 }
+
+// failingCreateDispatcher is a mock dispatcher whose DispatchAgentCreateWithGather
+// always returns an error, simulating a broker-side failure (e.g. auth resolution error).
+// It tracks whether DispatchAgentDelete is called so tests can verify cleanup behaviour.
+type failingCreateDispatcher struct {
+	createAgentDispatcher
+	createErr         error
+	deleteCalledFiles bool
+	deleteBranch      bool
+}
+
+func (d *failingCreateDispatcher) DispatchAgentCreateWithGather(_ context.Context, _ *store.Agent) (*RemoteEnvRequirementsResponse, error) {
+	return nil, d.createErr
+}
+func (d *failingCreateDispatcher) DispatchAgentDelete(_ context.Context, _ *store.Agent, deleteFiles, removeBranch, _ bool, _ time.Time) error {
+	d.deleteCalled = true
+	d.deleteCalledFiles = deleteFiles
+	d.deleteBranch = removeBranch
+	return nil
+}
 func (d *createAgentDispatcher) DispatchFinalizeEnv(_ context.Context, _ *store.Agent, _ map[string]string) error {
 	return nil
 }
@@ -3069,4 +3089,39 @@ func TestHandleAgentMessage_PlainTextBuildsStructuredMessage(t *testing.T) {
 	// Dev auth sets DisplayName to "Development User"
 	assert.Equal(t, "user:Development User", sm.Sender)
 	assert.NotEmpty(t, sm.Timestamp)
+}
+
+// TestCreateAgent_DispatchFailure_CleansUpBroker verifies that when the dispatch
+// to the runtime broker fails (e.g. auth resolution error), the hub dispatches a
+// delete with deleteFiles=true to clean up provisioned files on the broker, and
+// then deletes the agent record from the hub store.
+func TestCreateAgent_DispatchFailure_CleansUpBroker(t *testing.T) {
+	disp := &failingCreateDispatcher{
+		createErr: fmt.Errorf("auth resolution failed: gemini: auth type \"api-key\" selected but no API key found"),
+	}
+	srv, s, grove := setupCreateAgentServer(t, disp)
+	ctx := context.Background()
+
+	rec := doRequest(t, srv, http.MethodPost, "/api/v1/agents", CreateAgentRequest{
+		Name:    "auth-fail-agent",
+		GroveID: grove.ID,
+		Task:    "do something",
+	})
+
+	// Should return a runtime error
+	require.Equal(t, http.StatusBadGateway, rec.Code)
+
+	var errResp ErrorResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &errResp))
+	assert.Equal(t, ErrCodeRuntimeError, errResp.Error.Code)
+	assert.Contains(t, errResp.Error.Message, "auth resolution failed")
+
+	// Verify delete was dispatched to the broker with deleteFiles=true
+	assert.True(t, disp.deleteCalled, "hub should dispatch delete to broker to clean up provisioned files")
+	assert.True(t, disp.deleteCalledFiles, "delete should request file cleanup (deleteFiles=true)")
+	assert.True(t, disp.deleteBranch, "delete should request branch cleanup (removeBranch=true)")
+
+	// Verify agent record was deleted from hub store
+	_, err := s.GetAgent(ctx, "auth-fail-agent")
+	assert.ErrorIs(t, err, store.ErrNotFound, "agent should be deleted from hub store after dispatch failure")
 }

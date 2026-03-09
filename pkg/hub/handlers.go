@@ -612,7 +612,10 @@ func (s *Server) createAgentInGrove(
 					"agent", agent.Name, "broker", agent.RuntimeBrokerID)
 				envReqs, err := dispatcher.DispatchAgentCreateWithGather(ctx, agent)
 				if err != nil {
-					// Dispatch failed — clean up the agent record and return error
+					// Dispatch failed — clean up provisioned files on the broker
+					// and delete the agent record so orphaned local files don't
+					// trigger spurious sync-registration attempts.
+					_ = dispatcher.DispatchAgentDelete(ctx, agent, true, true, false, time.Time{})
 					_ = s.store.DeleteAgent(ctx, agent.ID)
 					RuntimeError(w, "Failed to dispatch to runtime broker: "+err.Error())
 					return
@@ -643,14 +646,18 @@ func (s *Server) createAgentInGrove(
 			} else {
 				envReqs, err := dispatcher.DispatchAgentCreateWithGather(ctx, agent)
 				if err != nil {
-					// Dispatch failed — clean up the agent record and return error
+					// Dispatch failed — clean up provisioned files on the broker
+					// and delete the agent record so orphaned local files don't
+					// trigger spurious sync-registration attempts.
+					_ = dispatcher.DispatchAgentDelete(ctx, agent, true, true, false, time.Time{})
 					_ = s.store.DeleteAgent(ctx, agent.ID)
 					RuntimeError(w, "Failed to dispatch to runtime broker: "+err.Error())
 					return
 				} else if envReqs != nil && len(envReqs.Needs) > 0 {
 					// Broker reported missing required env vars — fail the dispatch.
-					// Clean up the provisioning agent so it doesn't linger.
-					_ = dispatcher.DispatchAgentDelete(ctx, agent, false, false, false, time.Time{})
+					// Clean up the provisioning agent and its files so orphaned
+					// local state doesn't trigger spurious sync-registration.
+					_ = dispatcher.DispatchAgentDelete(ctx, agent, true, true, false, time.Time{})
 					_ = s.store.DeleteAgent(ctx, agent.ID)
 					MissingEnvVars(w, envReqs.Needs, s.buildEnvGatherResponse(ctx, agent, envReqs))
 					return
