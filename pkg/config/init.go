@@ -465,9 +465,34 @@ func initExternalGrove(projectDir string, opt InitProjectOpts) error {
 }
 
 // initInRepoGrove creates a git grove with .scion as a directory in the repo.
+// It also creates an external directory for agent homes (split storage)
+// to prevent cross-agent secret access via container mounts.
 func initInRepoGrove(projectDir string, opt InitProjectOpts) error {
 	if err := os.MkdirAll(projectDir, 0755); err != nil {
 		return fmt.Errorf("failed to create settings directory: %w", err)
+	}
+
+	// Ensure grove-id file exists for split storage
+	if _, err := ReadGroveID(projectDir); err != nil {
+		if os.IsNotExist(err) {
+			groveID := GenerateGroveIDForDir(filepath.Dir(projectDir))
+			if err := WriteGroveID(projectDir, groveID); err != nil {
+				return fmt.Errorf("failed to write grove-id: %w", err)
+			}
+		} else {
+			return fmt.Errorf("failed to read grove-id: %w", err)
+		}
+	}
+
+	// Create external agents directory for agent homes
+	externalAgentsDir, err := GetGitGroveExternalAgentsDir(projectDir)
+	if err != nil {
+		return fmt.Errorf("failed to compute external agents path: %w", err)
+	}
+	if externalAgentsDir != "" {
+		if err := os.MkdirAll(externalAgentsDir, 0755); err != nil {
+			return fmt.Errorf("failed to create external agents directory: %w", err)
+		}
 	}
 
 	return ensureGroveDirs(projectDir, opt)

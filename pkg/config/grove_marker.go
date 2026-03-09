@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/ptone/scion-agent/pkg/api"
 	"gopkg.in/yaml.v3"
 )
 
@@ -141,4 +142,58 @@ func ExtractSlugFromExternalDir(dirName string) string {
 		return parts[0]
 	}
 	return ""
+}
+
+// ReadGroveID reads the grove-id file from a git grove's .scion directory.
+func ReadGroveID(projectDir string) (string, error) {
+	data, err := os.ReadFile(filepath.Join(projectDir, "grove-id"))
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(data)), nil
+}
+
+// WriteGroveID writes a grove-id file to a git grove's .scion directory.
+func WriteGroveID(projectDir string, groveID string) error {
+	return os.WriteFile(filepath.Join(projectDir, "grove-id"), []byte(groveID+"\n"), 0644)
+}
+
+// GetGitGroveExternalAgentsDir returns the external agents directory for a git grove.
+// Git groves store agent homes externally at ~/.scion/grove-configs/<slug>__<uuid>/agents/
+// while keeping worktrees and config in-repo.
+// Returns ("", nil) if the grove-id file does not exist (not yet initialized for split storage).
+func GetGitGroveExternalAgentsDir(projectDir string) (string, error) {
+	groveID, err := ReadGroveID(projectDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", err
+	}
+
+	groveName := GetGroveName(projectDir)
+	groveSlug := api.Slugify(groveName)
+	marker := &GroveMarker{
+		GroveID:   groveID,
+		GroveName: groveName,
+		GroveSlug: groveSlug,
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, GlobalDir, "grove-configs", marker.DirName(), "agents"), nil
+}
+
+// GetAgentHomePath returns the correct home directory path for an agent.
+// For git groves with split storage (grove-id file exists), this returns
+// the external path under ~/.scion/grove-configs/.
+// For non-git groves (projectDir already resolved to external via marker),
+// or git groves without split storage, returns the in-repo path.
+func GetAgentHomePath(projectDir, agentName string) string {
+	if externalDir, err := GetGitGroveExternalAgentsDir(projectDir); err == nil && externalDir != "" {
+		return filepath.Join(externalDir, agentName, "home")
+	}
+	return filepath.Join(projectDir, "agents", agentName, "home")
 }

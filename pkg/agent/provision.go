@@ -35,11 +35,16 @@ func DeleteAgentFiles(agentName string, grovePath string, removeBranch bool) (bo
 	var agentsDirs []string
 	branchDeleted := false
 	var repoRoot string
+	var externalAgentDir string
 	if projectDir, err := config.GetResolvedProjectDir(grovePath); err == nil {
 		agentsDirs = append(agentsDirs, filepath.Join(projectDir, "agents"))
 		// Determine repo root for worktree pruning and branch cleanup
 		if root, err := util.RepoRootDir(filepath.Dir(projectDir)); err == nil {
 			repoRoot = root
+		}
+		// Check for external agent home (git grove split storage)
+		if extDir, err := config.GetGitGroveExternalAgentsDir(projectDir); err == nil && extDir != "" {
+			externalAgentDir = filepath.Join(extDir, agentName)
 		}
 	}
 	// Also check global just in case
@@ -109,6 +114,16 @@ func DeleteAgentFiles(agentName string, grovePath string, removeBranch bool) (bo
 			return branchDeleted, fmt.Errorf("failed to remove agent directory: %w", err)
 		}
 		util.Debugf("delete: removal completed in %v", time.Since(removeStart))
+	}
+
+	// Phase 3: remove external agent home (git grove split storage).
+	if externalAgentDir != "" {
+		if _, err := os.Stat(externalAgentDir); err == nil {
+			util.Debugf("delete: removing external agent home: %s", externalAgentDir)
+			if err := util.RemoveAllSafe(externalAgentDir); err != nil {
+				util.Debugf("delete: external home removal failed: %v", err)
+			}
+		}
 	}
 
 	return branchDeleted, nil
@@ -195,7 +210,7 @@ func ProvisionAgent(ctx context.Context, agentName string, templateName string, 
 	agentsDir := filepath.Join(projectDir, "agents")
 
 	agentDir := filepath.Join(agentsDir, agentName)
-	agentHome := filepath.Join(agentDir, "home")
+	agentHome := config.GetAgentHomePath(projectDir, agentName)
 	agentWorkspace := filepath.Join(agentDir, "workspace")
 
 	if err := os.MkdirAll(agentHome, 0755); err != nil {
@@ -666,7 +681,7 @@ func GetSavedProfile(agentName string, grovePath string) string {
 	if err != nil {
 		return ""
 	}
-	agentInfoPath := filepath.Join(projectDir, "agents", agentName, "home", "agent-info.json")
+	agentInfoPath := filepath.Join(config.GetAgentHomePath(projectDir, agentName), "agent-info.json")
 	if _, err := os.Stat(agentInfoPath); err == nil {
 		data, err := os.ReadFile(agentInfoPath)
 		if err == nil {
@@ -684,7 +699,7 @@ func GetSavedRuntime(agentName string, grovePath string) string {
 	if err != nil {
 		return ""
 	}
-	agentInfoPath := filepath.Join(projectDir, "agents", agentName, "home", "agent-info.json")
+	agentInfoPath := filepath.Join(config.GetAgentHomePath(projectDir, agentName), "agent-info.json")
 	if _, err := os.Stat(agentInfoPath); err == nil {
 		data, err := os.ReadFile(agentInfoPath)
 		if err == nil {
@@ -702,12 +717,10 @@ func UpdateAgentConfig(agentName string, grovePath string, status string, runtim
 	if err != nil {
 		return err
 	}
-	agentsDir := filepath.Join(projectDir, "agents")
-	agentDir := filepath.Join(agentsDir, agentName)
-	agentHome := filepath.Join(agentDir, "home")
+	agentHome := config.GetAgentHomePath(projectDir, agentName)
 	agentInfoPath := filepath.Join(agentHome, "agent-info.json")
 
-	// If agent-info.json doesn't exist, we can't update it. 
+	// If agent-info.json doesn't exist, we can't update it.
 	// This might happen if provisioning failed or hasn't finished.
 	if _, err := os.Stat(agentInfoPath); os.IsNotExist(err) {
 		return nil 
@@ -751,7 +764,7 @@ func UpdateAgentDeletedAt(agentName string, grovePath string, deletedAt time.Tim
 	if err != nil {
 		return err
 	}
-	agentInfoPath := filepath.Join(projectDir, "agents", agentName, "home", "agent-info.json")
+	agentInfoPath := filepath.Join(config.GetAgentHomePath(projectDir, agentName), "agent-info.json")
 
 	if _, err := os.Stat(agentInfoPath); os.IsNotExist(err) {
 		return nil
@@ -788,7 +801,7 @@ func GetAgent(ctx context.Context, agentName string, templateName string, agentI
 
 	agentsDir := filepath.Join(projectDir, "agents")
 	agentDir := filepath.Join(agentsDir, agentName)
-	agentHome := filepath.Join(agentDir, "home")
+	agentHome := config.GetAgentHomePath(projectDir, agentName)
 	agentWorkspace := filepath.Join(agentDir, "workspace")
 
 	// If we are resuming, and it's not a git repo, the physical workspace dir might not exist.

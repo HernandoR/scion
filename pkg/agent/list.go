@@ -71,7 +71,8 @@ func (m *AgentManager) List(ctx context.Context, filter map[string]string) ([]ap
 		if agents[i].GrovePath != "" {
 			agentDir := filepath.Join(agents[i].GrovePath, "agents", agents[i].Name)
 			scionJSON := filepath.Join(agentDir, "scion-agent.json")
-			agentInfoJSON := filepath.Join(agentDir, "home", "agent-info.json")
+			agentHome := config.GetAgentHomePath(agents[i].GrovePath, agents[i].Name)
+			agentInfoJSON := filepath.Join(agentHome, "agent-info.json")
 
 			// Try agent-info.json first for latest status from container
 			if data, err := os.ReadFile(agentInfoJSON); err == nil {
@@ -153,7 +154,8 @@ func (m *AgentManager) List(ctx context.Context, filter map[string]string) ([]ap
 			// Check scion-agent.json and home/agent-info.json
 			agentDir := filepath.Join(agentsDir, e.Name())
 			agentScionJSON := filepath.Join(agentDir, "scion-agent.json")
-			agentInfoJSON := filepath.Join(agentDir, "home", "agent-info.json")
+			agentHome := config.GetAgentHomePath(gp, e.Name())
+			agentInfoJSON := filepath.Join(agentHome, "agent-info.json")
 
 			var info *api.AgentInfo
 

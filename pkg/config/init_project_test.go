@@ -16,6 +16,7 @@ package config
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -216,6 +217,119 @@ func TestInitProject_NonGitIdempotent(t *testing.T) {
 	marker2, _ := ReadGroveMarker(filepath.Join(projectDir, ".scion"))
 	if marker1.GroveID != marker2.GroveID {
 		t.Errorf("grove-id changed between inits: %q → %q", marker1.GroveID, marker2.GroveID)
+	}
+}
+
+func TestInitProject_GitCreatesGroveIDAndExternalDir(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+	mockRuntimeDetection(t, "docker")
+
+	// Create a git repo
+	projectDir := filepath.Join(t.TempDir(), "my-git-project")
+	os.MkdirAll(projectDir, 0755)
+	setupGitRepoDir(t, projectDir)
+
+	scionDir := filepath.Join(projectDir, ".scion")
+
+	// Change to the project directory
+	origWd, _ := os.Getwd()
+	defer os.Chdir(origWd)
+	os.Chdir(projectDir)
+
+	if err := InitProject(scionDir, GetMockHarnesses()); err != nil {
+		t.Fatalf("InitProject failed: %v", err)
+	}
+
+	// Verify .scion is a directory (not a marker file, since it's a git grove)
+	info, err := os.Stat(scionDir)
+	if err != nil {
+		t.Fatalf(".scion does not exist: %v", err)
+	}
+	if !info.IsDir() {
+		t.Fatal("expected .scion to be a directory for git groves")
+	}
+
+	// Verify grove-id file was created
+	groveID, err := ReadGroveID(scionDir)
+	if err != nil {
+		t.Fatalf("ReadGroveID failed: %v", err)
+	}
+	if groveID == "" {
+		t.Error("grove-id should not be empty")
+	}
+
+	// Verify external agents directory was created
+	externalDir, err := GetGitGroveExternalAgentsDir(scionDir)
+	if err != nil {
+		t.Fatalf("GetGitGroveExternalAgentsDir failed: %v", err)
+	}
+	if externalDir == "" {
+		t.Fatal("external agents dir should not be empty")
+	}
+	if _, err := os.Stat(externalDir); os.IsNotExist(err) {
+		t.Errorf("expected external agents directory to exist at %s", externalDir)
+	}
+
+	// Verify templates dir exists in-repo (not external)
+	templatesDir := filepath.Join(scionDir, "templates")
+	if _, err := os.Stat(templatesDir); os.IsNotExist(err) {
+		t.Error("expected templates/ to exist in-repo")
+	}
+
+	// Verify agents dir exists in-repo (for worktrees)
+	agentsDir := filepath.Join(scionDir, "agents")
+	if _, err := os.Stat(agentsDir); os.IsNotExist(err) {
+		t.Error("expected agents/ to exist in-repo for worktrees")
+	}
+}
+
+func TestInitProject_GitIdempotentGroveID(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+	mockRuntimeDetection(t, "docker")
+
+	projectDir := filepath.Join(t.TempDir(), "idempotent-project")
+	os.MkdirAll(projectDir, 0755)
+	setupGitRepoDir(t, projectDir)
+
+	scionDir := filepath.Join(projectDir, ".scion")
+
+	origWd, _ := os.Getwd()
+	defer os.Chdir(origWd)
+	os.Chdir(projectDir)
+
+	// First init
+	if err := InitProject(scionDir, GetMockHarnesses()); err != nil {
+		t.Fatalf("first InitProject failed: %v", err)
+	}
+	groveID1, _ := ReadGroveID(scionDir)
+
+	// Second init
+	if err := InitProject(scionDir, GetMockHarnesses()); err != nil {
+		t.Fatalf("second InitProject failed: %v", err)
+	}
+	groveID2, _ := ReadGroveID(scionDir)
+
+	if groveID1 != groveID2 {
+		t.Errorf("grove-id changed between inits: %q → %q", groveID1, groveID2)
+	}
+}
+
+// setupGitRepoDir initializes a git repository in the given directory.
+func setupGitRepoDir(t *testing.T, dir string) {
+	t.Helper()
+	for _, args := range [][]string{
+		{"init"},
+		{"config", "user.email", "test@example.com"},
+		{"config", "user.name", "Test"},
+		{"commit", "--allow-empty", "-m", "initial"},
+	} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v failed: %v\n%s", args, err, out)
+		}
 	}
 }
 

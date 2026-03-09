@@ -261,6 +261,104 @@ func TestFindProjectRoot_MarkerFile(t *testing.T) {
 	}
 }
 
+func TestWriteAndReadGroveID(t *testing.T) {
+	tmpDir := t.TempDir()
+	scionDir := filepath.Join(tmpDir, ".scion")
+	os.MkdirAll(scionDir, 0755)
+
+	groveID := "550e8400-e29b-41d4-a716-446655440000"
+	if err := WriteGroveID(scionDir, groveID); err != nil {
+		t.Fatalf("WriteGroveID failed: %v", err)
+	}
+
+	got, err := ReadGroveID(scionDir)
+	if err != nil {
+		t.Fatalf("ReadGroveID failed: %v", err)
+	}
+	if got != groveID {
+		t.Errorf("ReadGroveID() = %q, want %q", got, groveID)
+	}
+}
+
+func TestReadGroveID_NotExist(t *testing.T) {
+	tmpDir := t.TempDir()
+	_, err := ReadGroveID(tmpDir)
+	if err == nil {
+		t.Fatal("expected error for missing grove-id")
+	}
+	if !os.IsNotExist(err) {
+		t.Errorf("expected os.IsNotExist error, got: %v", err)
+	}
+}
+
+func TestGetGitGroveExternalAgentsDir(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	// Create a simulated git grove .scion dir with grove-id
+	projectDir := filepath.Join(t.TempDir(), "my-repo", ".scion")
+	os.MkdirAll(projectDir, 0755)
+	WriteGroveID(projectDir, "550e8400-e29b-41d4-a716-446655440000")
+
+	got, err := GetGitGroveExternalAgentsDir(projectDir)
+	if err != nil {
+		t.Fatalf("GetGitGroveExternalAgentsDir failed: %v", err)
+	}
+
+	want := filepath.Join(tmpHome, ".scion", "grove-configs", "my-repo__550e8400", "agents")
+	if got != want {
+		t.Errorf("GetGitGroveExternalAgentsDir() = %q, want %q", got, want)
+	}
+}
+
+func TestGetGitGroveExternalAgentsDir_NoGroveID(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	// Create a .scion dir without grove-id
+	projectDir := filepath.Join(t.TempDir(), "my-repo", ".scion")
+	os.MkdirAll(projectDir, 0755)
+
+	got, err := GetGitGroveExternalAgentsDir(projectDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "" {
+		t.Errorf("expected empty string for missing grove-id, got %q", got)
+	}
+}
+
+func TestGetAgentHomePath_GitGroveSplitStorage(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	// Create a git grove with grove-id (split storage)
+	projectDir := filepath.Join(t.TempDir(), "my-repo", ".scion")
+	os.MkdirAll(projectDir, 0755)
+	WriteGroveID(projectDir, "550e8400-e29b-41d4-a716-446655440000")
+
+	got := GetAgentHomePath(projectDir, "test-agent")
+	want := filepath.Join(tmpHome, ".scion", "grove-configs", "my-repo__550e8400", "agents", "test-agent", "home")
+	if got != want {
+		t.Errorf("GetAgentHomePath() = %q, want %q", got, want)
+	}
+}
+
+func TestGetAgentHomePath_NoGroveID(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	// Create a .scion dir without grove-id (fallback to in-repo)
+	projectDir := filepath.Join(t.TempDir(), "my-repo", ".scion")
+	os.MkdirAll(projectDir, 0755)
+
+	got := GetAgentHomePath(projectDir, "test-agent")
+	want := filepath.Join(projectDir, "agents", "test-agent", "home")
+	if got != want {
+		t.Errorf("GetAgentHomePath() = %q, want %q", got, want)
+	}
+}
+
 func TestGetGroveName_ExternalDir(t *testing.T) {
 	// Test that GetGroveName extracts the slug from external directory names
 	tests := []struct {

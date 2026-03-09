@@ -177,7 +177,7 @@ For git-based groves, worktrees must remain inside the repo (they rely on `--rel
 
 ## Implementation Phases
 
-### Phase 1: Mount-Level Quick Fix (Immediate)
+### Phase 1: Mount-Level Quick Fix (Immediate) ✅ COMPLETE
 
 Close the active vulnerability with minimal code changes while the structural work is planned and implemented.
 
@@ -194,7 +194,7 @@ Close the active vulnerability with minimal code changes while the structural wo
 - Updated `pkg/config/init.go` with gitignore enforcement
 - Tests for mount argument generation
 
-### Phase 2: Externalize Non-Git Groves
+### Phase 2: Externalize Non-Git Groves ✅ COMPLETE
 
 Implement the marker-file approach for non-git groves, creating the `grove-configs` external directory structure.
 
@@ -214,7 +214,7 @@ Implement the marker-file approach for non-git groves, creating the `grove-confi
 - Migration error detection
 - Tests for marker file resolution and external grove lifecycle
 
-### Phase 3: Split Storage for Git Groves
+### Phase 3: Split Storage for Git Groves ✅ COMPLETE
 
 Move agent homes out of the repo `.scion/` directory for git-based groves while keeping worktrees in-repo.
 
