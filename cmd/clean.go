@@ -90,7 +90,7 @@ func runClean(cmd *cobra.Command, args []string) error {
 		if gitRemote != "" {
 			groveName = util.ExtractRepoName(gitRemote)
 		} else {
-			groveName = filepath.Base(filepath.Dir(resolvedPath))
+			groveName = config.GetGroveName(resolvedPath)
 		}
 	}
 

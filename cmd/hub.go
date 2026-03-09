@@ -649,7 +649,7 @@ func runHubStatus(cmd *cobra.Command, args []string) error {
 // printGroveContext prints information about the current grove's registration and available brokers.
 func printGroveContext(client hubclient.Client, grovePath string, isGlobal bool, settings *config.Settings) {
 	// Determine grove name from path
-	groveName := filepath.Base(filepath.Dir(grovePath))
+	groveName := config.GetGroveName(grovePath)
 	if isGlobal {
 		groveName = "global"
 	}
@@ -756,7 +756,7 @@ func getGroveContextJSON(client hubclient.Client, grovePath string, isGlobal boo
 	result := make(map[string]interface{})
 
 	// Determine grove name from path
-	groveName := filepath.Base(filepath.Dir(grovePath))
+	groveName := config.GetGroveName(grovePath)
 	if isGlobal {
 		groveName = "global"
 	}
@@ -948,7 +948,7 @@ func runHubGrovesInfo(cmd *cobra.Command, args []string) error {
 			if gitRemote != "" {
 				groveName = util.ExtractRepoName(gitRemote)
 			} else {
-				groveName = filepath.Base(filepath.Dir(resolvedPath))
+				groveName = config.GetGroveName(resolvedPath)
 			}
 		}
 	}
@@ -1079,7 +1079,7 @@ func runHubGrovesDelete(cmd *cobra.Command, args []string) error {
 			if gitRemote != "" {
 				groveName = util.ExtractRepoName(gitRemote)
 			} else {
-				groveName = filepath.Base(filepath.Dir(resolvedPath))
+				groveName = config.GetGroveName(resolvedPath)
 			}
 		}
 	}
@@ -1798,7 +1798,7 @@ func runHubLink(cmd *cobra.Command, args []string) error {
 		if gitRemote != "" {
 			groveName = util.ExtractRepoName(gitRemote)
 		} else {
-			groveName = filepath.Base(filepath.Dir(resolvedPath))
+			groveName = config.GetGroveName(resolvedPath)
 		}
 	}
 
@@ -2028,7 +2028,7 @@ func runHubUnlink(cmd *cobra.Command, args []string) error {
 		if gitRemote != "" {
 			groveName = util.ExtractRepoName(gitRemote)
 		} else {
-			groveName = filepath.Base(filepath.Dir(resolvedPath))
+			groveName = config.GetGroveName(resolvedPath)
 		}
 	}
 

@@ -1229,7 +1229,7 @@ func getGroveName(grovePath string, isGlobal bool) string {
 	if gitRemote != "" {
 		return util.ExtractRepoName(gitRemote)
 	}
-	return filepath.Base(filepath.Dir(grovePath))
+	return config.GetGroveName(grovePath)
 }
 
 // getEndpoint returns the Hub endpoint from settings.

@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"path/filepath"
 	"text/tabwriter"
 	"time"
 
@@ -408,7 +407,7 @@ func runBrokerRegister(cmd *cobra.Command, args []string) error {
 		if gitRemote != "" {
 			groveName = util.ExtractRepoName(gitRemote)
 		} else {
-			groveName = filepath.Base(filepath.Dir(resolvedPath))
+			groveName = config.GetGroveName(resolvedPath)
 		}
 	}
 
@@ -1040,7 +1039,7 @@ func runBrokerProvide(cmd *cobra.Command, args []string) error {
 			if gitRemote != "" {
 				groveName = util.ExtractRepoName(gitRemote)
 			} else {
-				groveName = filepath.Base(filepath.Dir(resolvedPath))
+				groveName = config.GetGroveName(resolvedPath)
 			}
 		}
 	}
@@ -1224,7 +1223,7 @@ func runBrokerWithdraw(cmd *cobra.Command, args []string) error {
 			if gitRemote != "" {
 				groveName = util.ExtractRepoName(gitRemote)
 			} else {
-				groveName = filepath.Base(filepath.Dir(resolvedPath))
+				groveName = config.GetGroveName(resolvedPath)
 			}
 		}
 	}

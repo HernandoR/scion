@@ -262,7 +262,7 @@ func promptHubRegistration(isGlobal bool) error {
 		if gitRemote != "" {
 			groveName = util.ExtractRepoName(gitRemote)
 		} else {
-			groveName = filepath.Base(filepath.Dir(resolvedPath))
+			groveName = config.GetGroveName(resolvedPath)
 		}
 	}
 
