@@ -281,7 +281,7 @@ export class ScionLoginPage extends LitElement {
       display: flex;
       align-items: center;
       justify-content: center;
-      background: rgba(255, 255, 255, 0.9);
+      background: var(--scion-bg, #f8fafc);
       z-index: 100;
     }
 

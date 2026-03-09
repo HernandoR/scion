@@ -173,7 +173,7 @@ func safeJSONForHTML(raw string) string {
 // It mirrors the structure from web/src/server/ssr/templates.ts but renders
 // a client-only shell (no SSR content).
 var spaShellTemplate = `<!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -318,6 +318,8 @@ var spaShellTemplate = `<!DOCTYPE html>
             if (saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
                 document.documentElement.setAttribute('data-theme', 'dark');
                 document.documentElement.classList.add('sl-theme-dark');
+            } else {
+                document.documentElement.setAttribute('data-theme', 'light');
             }
         })();
     </script>
