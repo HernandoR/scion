@@ -61,7 +61,7 @@ func (c *Codex) GetEnv(agentName string, agentHome string, unixUsername string) 
 }
 
 func (c *Codex) GetCommand(task string, resume bool, baseArgs []string) []string {
-	args := []string{"codex"}
+	args := []string{"codex", "--sandbox", "danger-full-access", "--dangerously-bypass-approvals-and-sandbox"}
 	if resume {
 		args = append(args, "resume", "--last")
 	} else {

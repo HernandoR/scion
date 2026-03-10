@@ -40,13 +40,13 @@ func TestCodexGetCommand(t *testing.T) {
 
 	// Test standard command
 	cmd := c.GetCommand("do something", false, []string{})
-	if len(cmd) < 2 || cmd[0] != "codex" || cmd[1] != "do something" {
+	if len(cmd) < 5 || cmd[0] != "codex" || cmd[1] != "--sandbox" || cmd[2] != "danger-full-access" || cmd[3] != "--dangerously-bypass-approvals-and-sandbox" || cmd[4] != "do something" {
 		t.Errorf("unexpected command structure: %v", cmd)
 	}
 
 	// Test resume
 	cmd = c.GetCommand("", true, []string{})
-	if len(cmd) < 2 || cmd[1] != "resume" {
+	if len(cmd) < 6 || cmd[4] != "resume" || cmd[5] != "--last" {
 		t.Errorf("unexpected resume command: %v", cmd)
 	}
 }
