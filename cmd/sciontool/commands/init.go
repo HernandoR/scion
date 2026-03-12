@@ -872,12 +872,45 @@ func gitCloneWorkspace(uid, gid int) error {
 		return fmt.Errorf("failed to configure git credential helper: %w", err)
 	}
 
-	// Create and checkout agent feature branch
-	branchName := "scion/" + agentName
-	checkoutCmd := exec.Command("git", "-C", workspacePath, "checkout", "-b", branchName)
+	// Determine the agent feature branch name.
+	// Priority: SCION_AGENT_BRANCH env var > default "scion/<agentName>"
+	branchName := os.Getenv("SCION_AGENT_BRANCH")
+	if branchName == "" {
+		branchName = "scion/" + agentName
+	}
+
+	// Try to check out the branch. It may exist locally (from clone) or
+	// remotely (needs fetch). If neither, create a new branch.
+	checked := false
+
+	// 1. Try local checkout (works if branch matches the cloned branch)
+	checkoutCmd := exec.Command("git", "-C", workspacePath, "checkout", branchName)
 	setCredential(checkoutCmd)
-	if err := checkoutCmd.Run(); err != nil {
-		return fmt.Errorf("failed to create branch %s: %w", branchName, err)
+	if err := checkoutCmd.Run(); err == nil {
+		checked = true
+	}
+
+	// 2. Try fetching the branch from origin (shallow clone may not have it)
+	if !checked {
+		fetchCmd := exec.Command("git", "-C", workspacePath, "fetch", "origin", branchName)
+		setCredential(fetchCmd)
+		if err := fetchCmd.Run(); err == nil {
+			// Branch exists on remote — check it out tracking origin
+			trackCmd := exec.Command("git", "-C", workspacePath, "checkout", "-b", branchName, "origin/"+branchName)
+			setCredential(trackCmd)
+			if err := trackCmd.Run(); err == nil {
+				checked = true
+			}
+		}
+	}
+
+	// 3. Branch doesn't exist anywhere — create it
+	if !checked {
+		createCmd := exec.Command("git", "-C", workspacePath, "checkout", "-b", branchName)
+		setCredential(createCmd)
+		if err := createCmd.Run(); err != nil {
+			return fmt.Errorf("failed to create branch %s: %w", branchName, err)
+		}
 	}
 
 	log.Info("Git clone complete: %s on branch %s", normalizedURL, branchName)

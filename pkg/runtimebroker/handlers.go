@@ -641,6 +641,10 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 		if gc.Depth > 0 {
 			env["SCION_GIT_DEPTH"] = strconv.Itoa(gc.Depth)
 		}
+		// Pass user-specified agent branch name for the feature branch
+		if req.Config.Branch != "" {
+			env["SCION_AGENT_BRANCH"] = req.Config.Branch
+		}
 		opts.Workspace = ""
 		opts.GrovePath = ""
 		opts.GitClone = gc
