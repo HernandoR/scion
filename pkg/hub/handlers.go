@@ -2130,7 +2130,16 @@ func (s *Server) createGrove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Idempotency: if client provided an ID, check for existing grove
+	// Derive deterministic ID from git remote when no explicit ID is provided.
+	// This ensures the same repository always gets the same grove ID regardless
+	// of whether it was created via CLI, web UI, or API, and regardless of
+	// whether the SSH or HTTPS URL variant was used.
+	normalizedRemote := util.NormalizeGitRemote(req.GitRemote)
+	if req.ID == "" && normalizedRemote != "" {
+		req.ID = util.HashGroveID(normalizedRemote)
+	}
+
+	// Idempotency: if we have an ID (client-provided or derived), check for existing grove
 	if req.ID != "" {
 		existing, err := s.store.GetGrove(ctx, req.ID)
 		if err == nil {
@@ -2142,7 +2151,7 @@ func (s *Server) createGrove(w http.ResponseWriter, r *http.Request) {
 			writeErrorFromErr(w, err, "")
 			return
 		}
-		// Not found — proceed to create with client-provided ID
+		// Not found — proceed to create with this ID
 	}
 
 	groveID := req.ID
@@ -2159,7 +2168,7 @@ func (s *Server) createGrove(w http.ResponseWriter, r *http.Request) {
 		ID:         groveID,
 		Name:       req.Name,
 		Slug:       slug,
-		GitRemote:  util.NormalizeGitRemote(req.GitRemote),
+		GitRemote:  normalizedRemote,
 		Labels:     req.Labels,
 		Visibility: req.Visibility,
 	}
@@ -2499,8 +2508,12 @@ func (s *Server) handleGroveRegister(w http.ResponseWriter, r *http.Request) {
 
 	// Create new grove if not found
 	if grove == nil {
-		// Use client-provided ID if available, otherwise generate
+		// Use client-provided ID if available; derive deterministic ID from
+		// git remote when possible; fall back to random UUID.
 		groveID := req.ID
+		if groveID == "" && normalizedRemote != "" {
+			groveID = util.HashGroveID(normalizedRemote)
+		}
 		if groveID == "" {
 			groveID = api.NewUUID()
 		}

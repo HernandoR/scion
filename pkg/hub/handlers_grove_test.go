@@ -28,6 +28,7 @@ import (
 	"github.com/GoogleCloudPlatform/scion/pkg/agent/state"
 	"github.com/GoogleCloudPlatform/scion/pkg/api"
 	"github.com/GoogleCloudPlatform/scion/pkg/store"
+	"github.com/GoogleCloudPlatform/scion/pkg/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -938,6 +939,77 @@ func TestGroveSyncTemplates_MethodNotAllowed(t *testing.T) {
 
 	rec := doRequest(t, srv, http.MethodGet, "/api/v1/groves/"+grove.ID+"/sync-templates", nil)
 	assert.Equal(t, http.StatusMethodNotAllowed, rec.Code)
+}
+
+// TestCreateGrove_GitBacked_DeterministicID verifies that groves created with a
+// git remote (but no explicit ID) get a deterministic UUID derived from the
+// normalized remote, so that SSH and HTTPS URLs for the same repo produce the
+// same grove ID.
+func TestCreateGrove_GitBacked_DeterministicID(t *testing.T) {
+	srv, _ := testServer(t)
+
+	sshURL := "git@github.com:acme/widgets.git"
+	httpsURL := "https://github.com/acme/widgets.git"
+	expectedID := util.HashGroveID(util.NormalizeGitRemote(sshURL))
+
+	// Create via SSH URL (no explicit ID)
+	rec := doRequest(t, srv, http.MethodPost, "/api/v1/groves", CreateGroveRequest{
+		Name:      "Widgets SSH",
+		GitRemote: sshURL,
+	})
+	require.Equal(t, http.StatusCreated, rec.Code, "body: %s", rec.Body.String())
+
+	var grove1 store.Grove
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&grove1))
+	assert.Equal(t, expectedID, grove1.ID, "grove ID should be deterministic from git remote")
+
+	// Create via HTTPS URL — should return the existing grove (idempotent)
+	rec = doRequest(t, srv, http.MethodPost, "/api/v1/groves", CreateGroveRequest{
+		Name:      "Widgets HTTPS",
+		GitRemote: httpsURL,
+	})
+	require.Equal(t, http.StatusOK, rec.Code, "body: %s", rec.Body.String())
+
+	var grove2 store.Grove
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&grove2))
+	assert.Equal(t, expectedID, grove2.ID, "same repo via HTTPS should resolve to same grove")
+}
+
+// TestCreateGrove_NoGitRemote_RandomID verifies that groves without a git
+// remote still get a random UUID (not a deterministic one).
+func TestCreateGrove_NoGitRemote_RandomID(t *testing.T) {
+	srv, _ := testServer(t)
+
+	rec := doRequest(t, srv, http.MethodPost, "/api/v1/groves", CreateGroveRequest{
+		Name: "No Remote Grove",
+	})
+	require.Equal(t, http.StatusCreated, rec.Code, "body: %s", rec.Body.String())
+
+	var grove store.Grove
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&grove))
+	assert.NotEmpty(t, grove.ID)
+	// The ID should be a valid UUID but NOT the hash of an empty string
+	assert.NotEqual(t, util.HashGroveID(""), grove.ID)
+}
+
+// TestRegisterGrove_GitBacked_DeterministicID verifies the register endpoint
+// also derives a deterministic ID from the git remote.
+func TestRegisterGrove_GitBacked_DeterministicID(t *testing.T) {
+	srv, _ := testServer(t)
+
+	gitRemote := "git@github.com:acme/gadgets.git"
+	expectedID := util.HashGroveID(util.NormalizeGitRemote(gitRemote))
+
+	rec := doRequest(t, srv, http.MethodPost, "/api/v1/groves/register", RegisterGroveRequest{
+		Name:      "Gadgets",
+		GitRemote: gitRemote,
+	})
+	require.Equal(t, http.StatusOK, rec.Code, "body: %s", rec.Body.String())
+
+	var resp RegisterGroveResponse
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&resp))
+	assert.Equal(t, expectedID, resp.Grove.ID, "registered grove ID should be deterministic from git remote")
+	assert.True(t, resp.Created)
 }
 
 // TestGroveSyncTemplates_GroveNotFound verifies 404 for non-existent grove.
