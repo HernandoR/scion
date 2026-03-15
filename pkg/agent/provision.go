@@ -402,36 +402,17 @@ func ProvisionAgent(ctx context.Context, agentName string, templateName string, 
 		finalScionCfg = config.MergeScionConfig(finalScionCfg, inlineCfg)
 	}
 
-	// 2b. Resolve harness-config name (full chain)
-	harnessConfigName := harnessConfig // CLI --harness-config flag (highest priority)
-	hcSource := "cli-flag"
-	if harnessConfigName == "" {
-		harnessConfigName = finalScionCfg.DefaultHarnessConfig // template's default_harness_config
-		hcSource = "template-default"
+	// 2b. Resolve harness-config name (unified resolution chain)
+	hcResolution, err := config.ResolveHarnessConfigName(config.HarnessConfigInputs{
+		CLIFlag:     harnessConfig,
+		TemplateCfg: finalScionCfg,
+		Settings:    settings,
+		ProfileName: profileName,
+	})
+	if err != nil {
+		return "", "", nil, err
 	}
-	if harnessConfigName == "" {
-		harnessConfigName = finalScionCfg.HarnessConfig // template's harness_config
-		hcSource = "template-harness-config"
-	}
-	if harnessConfigName == "" && settings != nil {
-		// Profile's DefaultHarnessConfig
-		effectiveProfile := profileName
-		if effectiveProfile == "" {
-			effectiveProfile = settings.ActiveProfile
-		}
-		if p, ok := settings.Profiles[effectiveProfile]; ok && p.DefaultHarnessConfig != "" {
-			harnessConfigName = p.DefaultHarnessConfig
-			hcSource = fmt.Sprintf("profile-%s", effectiveProfile)
-		}
-	}
-	if harnessConfigName == "" && settings != nil {
-		harnessConfigName = settings.DefaultHarnessConfig // top-level settings
-		hcSource = "settings-default"
-	}
-	util.Debugf("ProvisionAgent: harness-config resolved: name=%q source=%s", harnessConfigName, hcSource)
-	if harnessConfigName == "" {
-		return "", "", nil, fmt.Errorf("no harness-config resolved. Specify --harness-config, set default_harness_config in the template, or set default_harness_config in settings")
-	}
+	harnessConfigName := hcResolution.Name
 
 	// 2c. Load harness-config from disk (check template dirs first)
 	var templatePaths []string

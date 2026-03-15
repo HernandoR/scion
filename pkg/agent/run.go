@@ -135,32 +135,17 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 		harnessName = finalScionCfg.Harness
 	}
 
-	// Resolve harness config name: CLI flag > stored config > template default > legacy fallback (harness name)
-	harnessConfigName := opts.HarnessConfig
-	if harnessConfigName == "" && finalScionCfg != nil && finalScionCfg.HarnessConfig != "" {
-		harnessConfigName = finalScionCfg.HarnessConfig
-	}
-	if harnessConfigName == "" && finalScionCfg != nil && finalScionCfg.DefaultHarnessConfig != "" {
-		harnessConfigName = finalScionCfg.DefaultHarnessConfig
-	}
-	if harnessConfigName == "" {
-		harnessConfigName = harnessName
-	}
-
-	// Fall back to settings-based defaults (matches ProvisionAgent chain)
-	if harnessConfigName == "" && settings != nil {
-		effectiveProfile := opts.Profile
-		if effectiveProfile == "" {
-			effectiveProfile = settings.ActiveProfile
-		}
-		if effectiveProfile != "" {
-			if p, ok := settings.Profiles[effectiveProfile]; ok && p.DefaultHarnessConfig != "" {
-				harnessConfigName = p.DefaultHarnessConfig
-			}
-		}
-	}
-	if harnessConfigName == "" && settings != nil && settings.DefaultHarnessConfig != "" {
-		harnessConfigName = settings.DefaultHarnessConfig
+	// Resolve harness config name using the unified resolution chain.
+	// finalScionCfg acts as both stored config (resume) and template config.
+	harnessConfigName := ""
+	if hcRes, err := config.ResolveHarnessConfigName(config.HarnessConfigInputs{
+		CLIFlag:      opts.HarnessConfig,
+		StoredConfig: finalScionCfg,
+		TemplateCfg:  finalScionCfg,
+		Settings:     settings,
+		ProfileName:  opts.Profile,
+	}); err == nil {
+		harnessConfigName = hcRes.Name
 	}
 
 	// Default values

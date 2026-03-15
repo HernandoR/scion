@@ -1584,7 +1584,7 @@ func (s *Server) extractRequiredEnvKeys(req CreateAgentRequest) ([]string, map[s
 	// Phase 1: Auth-aware env key extraction
 	// Resolve harness type and auth_selected_type, then derive required keys.
 	secretInfo := make(map[string]api.SecretKeyInfo)
-	harnessConfigName := s.resolveHarnessConfigName(req, settings)
+	harnessConfigName := s.resolveHarnessConfigForEnvGather(req, settings)
 	if s.config.Debug {
 		s.envSecretLog.Debug("extractRequiredEnvKeys: harness resolution",
 			"harnessConfigName", harnessConfigName,
@@ -1828,103 +1828,46 @@ func (s *Server) extractRequiredEnvKeys(req CreateAgentRequest) ([]string, map[s
 	return keys, secretInfo
 }
 
-// resolveHarnessConfigName determines which harness-config to use for the agent.
-// Resolution chain:
-//  1. req.Config.HarnessConfig (explicit harness config override)
-//  2. req.Config.Template (if it matches a valid harness-config directory)
-//  3. profile's DefaultHarnessConfig
-//  4. settings' DefaultHarnessConfig
-func (s *Server) resolveHarnessConfigName(req CreateAgentRequest, settings *config.VersionedSettings) string {
-	// 1. Explicit harness in config
-	if req.Config != nil && req.Config.HarnessConfig != "" {
-		return req.Config.HarnessConfig
+// resolveHarnessConfigForEnvGather determines the harness-config name for the
+// env-gather flow (pre-provisioning secret key extraction). It uses the unified
+// config.ResolveHarnessConfigName with a broker-specific fallback: if the
+// template name matches a valid harness-config directory or settings entry,
+// it is used as the harness-config name.
+func (s *Server) resolveHarnessConfigForEnvGather(req CreateAgentRequest, settings *config.VersionedSettings) string {
+	// Broker-specific: treat template name as harness-config if it matches a
+	// known harness-config directory or settings entry.
+	cliFlag := ""
+	if req.Config != nil {
+		cliFlag = req.Config.HarnessConfig
 	}
-
-	// 2. Template name that matches an on-disk harness-config directory
-	if req.Config != nil && req.Config.Template != "" {
+	if cliFlag == "" && req.Config != nil && req.Config.Template != "" {
+		tpl := req.Config.Template
 		if req.GrovePath != "" {
-			if _, err := config.FindHarnessConfigDir(req.Config.Template, req.GrovePath); err == nil {
-				return req.Config.Template
+			if _, err := config.FindHarnessConfigDir(tpl, req.GrovePath); err == nil {
+				cliFlag = tpl
 			}
 		}
-
-		// 3. Template name that matches a settings harness_configs entry
-		if settings != nil {
-			if _, ok := settings.HarnessConfigs[req.Config.Template]; ok {
-				return req.Config.Template
+		if cliFlag == "" && settings != nil {
+			if _, ok := settings.HarnessConfigs[tpl]; ok {
+				cliFlag = tpl
 			}
 		}
 	}
 
-	if settings == nil {
-		return ""
-	}
-
-	// Resolve profile name
 	profileName := ""
 	if req.Config != nil {
 		profileName = req.Config.Profile
 	}
-	if profileName == "" {
-		profileName = settings.ActiveProfile
+
+	res, err := config.ResolveHarnessConfigName(config.HarnessConfigInputs{
+		CLIFlag:     cliFlag,
+		Settings:    settings,
+		ProfileName: profileName,
+	})
+	if err != nil {
+		return ""
 	}
-
-	// 4. Profile's DefaultHarnessConfig
-	if profileName != "" {
-		if profile, ok := settings.Profiles[profileName]; ok {
-			if profile.DefaultHarnessConfig != "" {
-				return profile.DefaultHarnessConfig
-			}
-		}
-	}
-
-	// 5. Settings' DefaultHarnessConfig
-	if settings.DefaultHarnessConfig != "" {
-		return settings.DefaultHarnessConfig
-	}
-
-	return ""
-}
-
-// resolveHarnessIdentity loads the on-disk harness-config directory and applies
-// settings overrides to determine the harness name and auth_selected_type.
-func (s *Server) resolveHarnessIdentity(name, grovePath string, settings *config.VersionedSettings, reqConfig *CreateAgentConfig) (harnessName, authSelectedType string) {
-	// Try loading from on-disk harness-config directory
-	if grovePath != "" {
-		if hcDir, err := config.FindHarnessConfigDir(name, grovePath); err == nil {
-			harnessName = hcDir.Config.Harness
-			authSelectedType = hcDir.Config.AuthSelectedType
-		}
-	}
-
-	// If no on-disk config found, check if the name itself is a known harness
-	if harnessName == "" {
-		// Check if the name matches a settings harness-config entry
-		if settings != nil {
-			if hcEntry, ok := settings.HarnessConfigs[name]; ok {
-				harnessName = hcEntry.Harness
-				authSelectedType = hcEntry.AuthSelectedType
-			}
-		}
-		// Fall back to treating the name as a harness name directly
-		if harnessName == "" {
-			harnessName = name
-		}
-	}
-
-	// Apply settings-level overrides via ResolveHarnessConfig
-	if settings != nil {
-		profileName := ""
-		if reqConfig != nil {
-			profileName = reqConfig.Profile
-		}
-		resolved, err := settings.ResolveHarnessConfig(profileName, name)
-		if err == nil && resolved.AuthSelectedType != "" {
-			authSelectedType = resolved.AuthSelectedType
-		}
-	}
-
-	return harnessName, authSelectedType
+	return res.Name
 }
 
 // finalizeEnv handles the second phase of env-gather: receiving gathered env vars
