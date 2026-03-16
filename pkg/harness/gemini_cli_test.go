@@ -53,46 +53,6 @@ func TestGeminiGetTelemetryEnv(t *testing.T) {
 	}
 }
 
-func TestGeminiProvision_AddsMissingModelHooks(t *testing.T) {
-	agentHome := t.TempDir()
-	agentDir := t.TempDir()
-	g := &GeminiCLI{}
-
-	settingsPath := filepath.Join(agentHome, ".gemini", "settings.json")
-	if err := os.MkdirAll(filepath.Dir(settingsPath), 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(settingsPath, []byte(`{"hooks":{"SessionStart":[{"matcher":"*","hooks":[{"name":"scion-status","type":"command","command":"sciontool hook --dialect=gemini"}]}]}}`), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	scionAgentPath := filepath.Join(agentDir, "scion-agent.json")
-	if err := os.WriteFile(scionAgentPath, []byte(`{"authSelectedType":""}`), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := g.Provision(nil, "agent", agentDir, agentHome, t.TempDir()); err != nil {
-		t.Fatalf("Provision failed: %v", err)
-	}
-
-	data, err := os.ReadFile(settingsPath)
-	if err != nil {
-		t.Fatalf("expected settings.json at %s: %v", settingsPath, err)
-	}
-
-	var settings map[string]interface{}
-	if err := json.Unmarshal(data, &settings); err != nil {
-		t.Fatalf("failed to parse settings.json: %v", err)
-	}
-
-	hooks, _ := settings["hooks"].(map[string]interface{})
-	for _, eventName := range []string{"BeforeModel", "AfterModel"} {
-		if _, ok := hooks[eventName]; !ok {
-			t.Fatalf("expected %s hook to be present after Provision", eventName)
-		}
-	}
-}
-
 func TestGeminiInjectAgentInstructions(t *testing.T) {
 	agentHome := t.TempDir()
 	g := &GeminiCLI{}

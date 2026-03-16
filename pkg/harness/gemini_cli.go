@@ -28,21 +28,6 @@ import (
 	"github.com/GoogleCloudPlatform/scion/pkg/util"
 )
 
-var geminiRequiredHooks = []struct {
-	event   string
-	matcher string
-}{
-	{event: "SessionStart", matcher: "*"},
-	{event: "SessionEnd", matcher: "*"},
-	{event: "BeforeAgent", matcher: "*"},
-	{event: "AfterAgent", matcher: "*"},
-	{event: "BeforeTool", matcher: "*"},
-	{event: "AfterTool", matcher: "*"},
-	{event: "BeforeModel", matcher: "*"},
-	{event: "AfterModel", matcher: "*"},
-	{event: "Notification", matcher: "ToolPermission"},
-}
-
 type GeminiCLI struct{}
 
 func (g *GeminiCLI) Name() string {
@@ -144,11 +129,6 @@ func (g *GeminiCLI) isValidPromptFile(path string) bool {
 
 func (g *GeminiCLI) Provision(ctx context.Context, agentName, agentDir, agentHome, agentWorkspace string) error {
 	scionAgentPath := filepath.Join(agentDir, "scion-agent.json")
-	geminiSettingsPath := filepath.Join(agentHome, g.DefaultConfigDir(), "settings.json")
-
-	if err := g.ensureScionHooks(geminiSettingsPath); err != nil {
-		return fmt.Errorf("failed to reconcile gemini hooks: %w", err)
-	}
 
 	data, err := os.ReadFile(scionAgentPath)
 	if err != nil {
@@ -166,6 +146,7 @@ func (g *GeminiCLI) Provision(ctx context.Context, agentName, agentDir, agentHom
 
 	if geminiAuthType != "" {
 		// Update ~/.gemini/settings.json with Gemini-native auth type
+		geminiSettingsPath := filepath.Join(agentHome, g.DefaultConfigDir(), "settings.json")
 		if err := g.updateSelectedAuthType(geminiSettingsPath, geminiAuthType); err != nil {
 			return fmt.Errorf("failed to update gemini settings: %w", err)
 		}
@@ -214,8 +195,13 @@ func (g *GeminiCLI) Provision(ctx context.Context, agentName, agentDir, agentHom
 }
 
 func (g *GeminiCLI) updateSelectedAuthType(settingsPath string, selectedType string) error {
-	settings := loadGeminiSettings(settingsPath)
-	hooksChanged := ensureGeminiHookConfig(settings)
+	var settings map[string]interface{}
+	if data, err := os.ReadFile(settingsPath); err == nil {
+		_ = json.Unmarshal(data, &settings)
+	}
+	if settings == nil {
+		settings = make(map[string]interface{})
+	}
 
 	if _, ok := settings["security"]; !ok {
 		settings["security"] = make(map[string]interface{})
@@ -227,34 +213,11 @@ func (g *GeminiCLI) updateSelectedAuthType(settingsPath string, selectedType str
 	}
 	auth := sec["auth"].(map[string]interface{})
 
-	if current, _ := auth["selectedType"].(string); current == selectedType && !hooksChanged {
+	if current, _ := auth["selectedType"].(string); current == selectedType {
 		return nil
 	}
 
 	auth["selectedType"] = selectedType
-	return writeGeminiSettings(settingsPath, settings)
-}
-
-func (g *GeminiCLI) ensureScionHooks(settingsPath string) error {
-	settings := loadGeminiSettings(settingsPath)
-	if !ensureGeminiHookConfig(settings) {
-		return nil
-	}
-	return writeGeminiSettings(settingsPath, settings)
-}
-
-func loadGeminiSettings(settingsPath string) map[string]interface{} {
-	var settings map[string]interface{}
-	if data, err := os.ReadFile(settingsPath); err == nil {
-		_ = json.Unmarshal(data, &settings)
-	}
-	if settings == nil {
-		settings = make(map[string]interface{})
-	}
-	return settings
-}
-
-func writeGeminiSettings(settingsPath string, settings map[string]interface{}) error {
 	data, err := json.MarshalIndent(settings, "", "  ")
 	if err != nil {
 		return err
@@ -264,41 +227,6 @@ func writeGeminiSettings(settingsPath string, settings map[string]interface{}) e
 		return err
 	}
 	return os.WriteFile(settingsPath, data, 0644)
-}
-
-func ensureGeminiHookConfig(settings map[string]interface{}) bool {
-	hooks := ensureGeminiMap(settings, "hooks")
-	changed := false
-
-	for _, spec := range geminiRequiredHooks {
-		if _, ok := hooks[spec.event]; ok {
-			continue
-		}
-		hooks[spec.event] = []interface{}{
-			map[string]interface{}{
-				"matcher": spec.matcher,
-				"hooks": []interface{}{
-					map[string]interface{}{
-						"name":    "scion-status",
-						"type":    "command",
-						"command": "sciontool hook --dialect=gemini",
-					},
-				},
-			},
-		}
-		changed = true
-	}
-
-	return changed
-}
-
-func ensureGeminiMap(parent map[string]interface{}, key string) map[string]interface{} {
-	if existing, ok := parent[key].(map[string]interface{}); ok {
-		return existing
-	}
-	child := make(map[string]interface{})
-	parent[key] = child
-	return child
 }
 
 // toGeminiAuthType maps universal auth type values to Gemini CLI-internal values.
