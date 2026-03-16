@@ -33,6 +33,9 @@ func TestLoadConfig_Defaults(t *testing.T) {
 	if cfg.Insecure {
 		t.Error("Expected Insecure to be false by default")
 	}
+	if cfg.MetricsDebug {
+		t.Error("Expected MetricsDebug to be false by default")
+	}
 	// Default exclude list should be applied
 	if len(cfg.Filter.Exclude) != 1 || cfg.Filter.Exclude[0] != "agent.user.prompt" {
 		t.Errorf("Expected default exclude list, got %v", cfg.Filter.Exclude)
@@ -52,6 +55,7 @@ func TestLoadConfig_EnvOverrides(t *testing.T) {
 	os.Setenv(EnvProjectID, "my-project")
 	os.Setenv(EnvFilterExclude, "event.type.a,event.type.b")
 	os.Setenv(EnvFilterInclude, "event.type.c")
+	os.Setenv(EnvMetricsDebug, "true")
 	defer clearTelemetryEnv()
 
 	cfg := LoadConfig()
@@ -85,6 +89,9 @@ func TestLoadConfig_EnvOverrides(t *testing.T) {
 	}
 	if len(cfg.Filter.Include) != 1 {
 		t.Errorf("Expected 1 include pattern, got %d", len(cfg.Filter.Include))
+	}
+	if !cfg.MetricsDebug {
+		t.Error("Expected MetricsDebug to be true")
 	}
 }
 
@@ -469,4 +476,5 @@ func clearTelemetryEnv() {
 	os.Unsetenv(EnvProjectID)
 	os.Unsetenv(EnvGCPCredentials)
 	os.Unsetenv(EnvCloudProvider)
+	os.Unsetenv(EnvMetricsDebug)
 }

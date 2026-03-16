@@ -130,11 +130,15 @@ func newGCPProviders(ctx context.Context, config *Config, res *resource.Resource
 	if len(clientOpts) > 0 {
 		metricOpts = append(metricOpts, mexporter.WithMonitoringClientOptions(clientOpts...))
 	}
-	metricExporter, err := mexporter.New(metricOpts...)
+	rawMetricExporter, err := mexporter.New(metricOpts...)
 	if err != nil {
 		_ = traceExporter.Shutdown(ctx)
 		_ = logExporter.Shutdown(ctx)
 		return nil, fmt.Errorf("creating GCP metric exporter: %w", err)
+	}
+	var metricExporter metric.Exporter = rawMetricExporter
+	if config.MetricsDebug {
+		metricExporter = newDebugMetricExporter(metricExporter)
 	}
 
 	return buildProviders(res, traceExporter, logExporter, metricExporter, batch), nil
@@ -193,11 +197,15 @@ func newOTLPProviders(ctx context.Context, config *Config, res *resource.Resourc
 	for _, do := range gcpDialOpts {
 		metricOpts = append(metricOpts, otlpmetricgrpc.WithDialOption(do))
 	}
-	metricExporter, err := otlpmetricgrpc.New(ctx, metricOpts...)
+	rawMetricExporter, err := otlpmetricgrpc.New(ctx, metricOpts...)
 	if err != nil {
 		_ = traceExporter.Shutdown(ctx)
 		_ = logExporter.Shutdown(ctx)
 		return nil, fmt.Errorf("creating metric exporter: %w", err)
+	}
+	var metricExporter metric.Exporter = rawMetricExporter
+	if config.MetricsDebug {
+		metricExporter = newDebugMetricExporter(metricExporter)
 	}
 
 	return buildProviders(res, traceExporter, logExporter, metricExporter, batch), nil

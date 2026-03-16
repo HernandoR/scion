@@ -24,20 +24,20 @@ import (
 
 // SpanMapping defines how hook events map to span names.
 var SpanMapping = map[string]string{
-	hooks.EventSessionStart:    "agent.session.start",
-	hooks.EventSessionEnd:      "agent.session.end",
-	hooks.EventToolStart:       "agent.tool.call",
-	hooks.EventToolEnd:         "agent.tool.result",
-	hooks.EventPromptSubmit:    "agent.user.prompt",
-	hooks.EventModelStart:      "gen_ai.api.request",
-	hooks.EventModelEnd:        "gen_ai.api.response",
-	hooks.EventAgentStart:      "agent.turn.start",
-	hooks.EventAgentEnd:        "agent.turn.end",
-	hooks.EventNotification:    "agent.notification",
+	hooks.EventSessionStart:     "agent.session.start",
+	hooks.EventSessionEnd:       "agent.session.end",
+	hooks.EventToolStart:        "agent.tool.call",
+	hooks.EventToolEnd:          "agent.tool.result",
+	hooks.EventPromptSubmit:     "agent.user.prompt",
+	hooks.EventModelStart:       "gen_ai.api.request",
+	hooks.EventModelEnd:         "gen_ai.api.response",
+	hooks.EventAgentStart:       "agent.turn.start",
+	hooks.EventAgentEnd:         "agent.turn.end",
+	hooks.EventNotification:     "agent.notification",
 	hooks.EventResponseComplete: "agent.response.complete",
-	hooks.EventPreStart:        "agent.lifecycle.pre_start",
-	hooks.EventPostStart:       "agent.lifecycle.post_start",
-	hooks.EventPreStop:         "agent.lifecycle.pre_stop",
+	hooks.EventPreStart:         "agent.lifecycle.pre_start",
+	hooks.EventPostStart:        "agent.lifecycle.post_start",
+	hooks.EventPreStop:          "agent.lifecycle.pre_stop",
 }
 
 // inProgressSpan tracks a span that has been started but not ended.
@@ -51,20 +51,21 @@ type inProgressSpan struct {
 // TelemetryHandler converts hook events to OTLP spans, emits correlated log records,
 // and records OTel metrics for token usage, tool calls, and API performance.
 type TelemetryHandler struct {
-	tracer     trace.Tracer
-	logger     *slog.Logger
-	redactor   *telemetry.Redactor
-	spanStore sync.Map // map[string]*inProgressSpan - keyed by spanKey
+	tracer       trace.Tracer
+	logger       *slog.Logger
+	redactor     *telemetry.Redactor
+	metricsDebug bool
+	spanStore    sync.Map // map[string]*inProgressSpan - keyed by spanKey
 
 	// Metric instruments
-	tokensInput    metric.Int64Counter
-	tokensOutput   metric.Int64Counter
-	tokensCached   metric.Int64Counter
-	toolCalls      metric.Int64Counter
-	toolDuration   metric.Float64Histogram
-	sessionCount   metric.Int64Counter
-	apiCalls       metric.Int64Counter
-	apiDuration    metric.Float64Histogram
+	tokensInput  metric.Int64Counter
+	tokensOutput metric.Int64Counter
+	tokensCached metric.Int64Counter
+	toolCalls    metric.Int64Counter
+	toolDuration metric.Float64Histogram
+	sessionCount metric.Int64Counter
+	apiCalls     metric.Int64Counter
+	apiDuration  metric.Float64Histogram
 }
 
 // NewTelemetryHandler creates a new telemetry handler.
@@ -80,8 +81,9 @@ func NewTelemetryHandler(tp trace.TracerProvider, lp otellog.LoggerProvider, red
 	}
 
 	h := &TelemetryHandler{
-		tracer:   tracer,
-		redactor: redactor,
+		tracer:       tracer,
+		redactor:     redactor,
+		metricsDebug: telemetry.MetricsDebugEnabled(),
 	}
 
 	if lp != nil {
@@ -167,12 +169,22 @@ func (h *TelemetryHandler) initMetrics(mp metric.MeterProvider) {
 	if err != nil {
 		log.Error("Failed to create gen_ai.api.duration histogram: %v", err)
 	}
+
+	if h.metricsDebug {
+		log.TaggedInfo("metrics", "initialized metrics instruments for hook telemetry")
+	}
 }
 
 // Handle processes a hook event and emits a corresponding span.
 func (h *TelemetryHandler) Handle(event *hooks.Event) error {
 	if h == nil || event == nil {
 		return nil
+	}
+
+	if h.metricsDebug && isMetricRelevantEvent(event.Name) {
+		log.TaggedInfo("metrics",
+			"normalized hook event=%s raw=%s dialect=%s input_tokens=%d output_tokens=%d cached_tokens=%d success=%t error=%q",
+			event.Name, event.RawName, event.Dialect, event.Data.InputTokens, event.Data.OutputTokens, event.Data.CachedTokens, event.Data.Success, event.Data.Error)
 	}
 
 	spanName, ok := SpanMapping[event.Name]
@@ -580,14 +592,29 @@ func (h *TelemetryHandler) recordTokenMetrics(ctx context.Context, event *hooks.
 		attrs = append(attrs, attribute.String("model", model))
 	}
 
+	recorded := false
+
 	if h.tokensInput != nil && event.Data.InputTokens > 0 {
 		h.tokensInput.Add(ctx, event.Data.InputTokens, metric.WithAttributes(attrs...))
+		recorded = true
 	}
 	if h.tokensOutput != nil && event.Data.OutputTokens > 0 {
 		h.tokensOutput.Add(ctx, event.Data.OutputTokens, metric.WithAttributes(attrs...))
+		recorded = true
 	}
 	if h.tokensCached != nil && event.Data.CachedTokens > 0 {
 		h.tokensCached.Add(ctx, event.Data.CachedTokens, metric.WithAttributes(attrs...))
+		recorded = true
+	}
+
+	if h.metricsDebug {
+		if recorded {
+			log.TaggedInfo("metrics",
+				"recorded token metrics for event=%s input=%d output=%d cached=%d",
+				event.Name, event.Data.InputTokens, event.Data.OutputTokens, event.Data.CachedTokens)
+		} else if event.Name == hooks.EventModelEnd || event.Name == hooks.EventSessionEnd {
+			log.TaggedInfo("metrics", "no token metrics recorded for event=%s (no token fields present)", event.Name)
+		}
 	}
 }
 
@@ -619,4 +646,13 @@ func (h *TelemetryHandler) Flush() {
 		h.spanStore.Delete(key)
 		return true
 	})
+}
+
+func isMetricRelevantEvent(name string) bool {
+	switch name {
+	case hooks.EventModelEnd, hooks.EventSessionEnd, hooks.EventToolEnd:
+		return true
+	default:
+		return false
+	}
 }

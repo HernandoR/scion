@@ -44,6 +44,8 @@ const (
 	EnvGCPCredentials = "SCION_OTEL_GCP_CREDENTIALS"
 	// EnvCloudProvider identifies the cloud telemetry backend (e.g. "gcp").
 	EnvCloudProvider = "SCION_TELEMETRY_CLOUD_PROVIDER"
+	// EnvMetricsDebug enables verbose metrics normalization/export debugging.
+	EnvMetricsDebug = "SCION_TELEMETRY_METRICS_DEBUG"
 )
 
 // Default configuration values.
@@ -88,6 +90,8 @@ type Config struct {
 	GCPCredentialsFile string
 	// CloudProvider identifies the cloud telemetry backend (e.g. "gcp").
 	CloudProvider string
+	// MetricsDebug enables verbose metric normalization and export logging.
+	MetricsDebug bool
 }
 
 // FilterConfig holds include/exclude patterns for event filtering.
@@ -119,6 +123,7 @@ func LoadConfig() *Config {
 		},
 		GCPCredentialsFile: os.Getenv(EnvGCPCredentials),
 		CloudProvider:      os.Getenv(EnvCloudProvider),
+		MetricsDebug:       parseBoolEnv(EnvMetricsDebug, false),
 	}
 
 	// Auto-detect GCP provider when credentials file is present but provider
@@ -149,6 +154,11 @@ func LoadConfig() *Config {
 	}
 
 	return cfg
+}
+
+// MetricsDebugEnabled returns true when verbose metrics debugging is enabled.
+func MetricsDebugEnabled() bool {
+	return parseBoolEnv(EnvMetricsDebug, false)
 }
 
 // IsCloudConfigured returns true if cloud forwarding is properly configured.

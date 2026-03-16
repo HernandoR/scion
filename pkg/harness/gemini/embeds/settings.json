@@ -107,6 +107,30 @@
         ]
       }
     ],
+    "BeforeModel": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "name": "scion-status",
+            "type": "command",
+            "command": "sciontool hook --dialect=gemini"
+          }
+        ]
+      }
+    ],
+    "AfterModel": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "name": "scion-status",
+            "type": "command",
+            "command": "sciontool hook --dialect=gemini"
+          }
+        ]
+      }
+    ],
     "Notification": [
       {
         "matcher": "ToolPermission",
