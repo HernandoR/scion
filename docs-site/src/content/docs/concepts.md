@@ -49,7 +49,7 @@ The **Runtime** is the infrastructure layer responsible for executing the agent 
 A **Runtime Broker** is a compute node (e.g., a server, laptop, or K8s cluster) that registers with a **Scion Hub** to provide execution capacity.
 - It manages the local lifecycle of agents dispatched from the Hub.
 - It handles workspace synchronization, template hydration, and log streaming.
-- For more details, see the [Runtime Broker Guide](./hub-admin/runtime-broker/).
+- For more details, see the [Runtime Broker Guide](/scion/hub-user/runtime-broker/).
 
 ### Agent State Model
 
@@ -91,7 +91,7 @@ When a Hub is enabled, all git-based groves (including locally linked ones) use 
 - SSH credentials on the host are not used; a `GITHUB_TOKEN` is required.
 - This strategy is consistent across all broker machines, whether or not the repo exists locally.
 
-This distinction means a grove that was previously used in local mode will switch to clone-based provisioning once it is linked to a Hub. See the [About Workspaces](./advanced-local/workspace/) guide for details.
+This distinction means a grove that was previously used in local mode will switch to clone-based provisioning once it is linked to a Hub. See the [About Workspaces](/scion/advanced-local/workspace/) guide for details.
 
 ### Resource Isolation
 Scion enforces strict isolation between agents to prevent interference and cross-contamination of credentials or data.

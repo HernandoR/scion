@@ -22,7 +22,7 @@ hub:
   local_only: false
 ```
 
-**Note:** In workstation mode, this should be http://localhost:8080.
+**Note:** In workstation mode, this should be `http://localhost:8080`.
 
 ### Authentication
 
@@ -72,7 +72,7 @@ This means:
   ```
 - To use local worktrees instead, run with `--no-hub` or disable hub integration temporarily.
 
-For full details on workspace strategies, see [About Workspaces](../advanced-local/workspace/).
+For full details on workspace strategies, see [About Workspaces](/scion/advanced-local/workspace/).
 
 ## Using Remote Infrastructure
 
@@ -100,7 +100,7 @@ Secrets are encrypted and never returned via the API; they are securely injected
 
 These can also be managed via the web UI at either the user scope (under the profile) or at the Grove scope (under Grove settings page)
 
-See the [Secret & Environment Management guide](../hub-user/secrets/) for details on scoping and projection modes.
+See the [Secret & Environment Management guide](/scion/hub-user/secrets/) for details on scoping and projection modes.
 
 ## Remote & Hub-Native Groves
 
