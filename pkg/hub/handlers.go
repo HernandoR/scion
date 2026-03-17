@@ -3291,6 +3291,11 @@ func (s *Server) getGrove(w http.ResponseWriter, r *http.Request, id string) {
 		return
 	}
 
+	// Ensure associated groups exist (backfill for groves created before
+	// group support was added). These calls are idempotent.
+	s.createGroveGroup(ctx, grove)
+	s.createGroveMembersGroupAndPolicy(ctx, grove)
+
 	resp := GroveWithCapabilities{Grove: *grove}
 	if identity := GetIdentityFromContext(ctx); identity != nil {
 		resp.Cap = s.authzService.ComputeCapabilities(ctx, identity, groveResource(grove))
