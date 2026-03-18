@@ -470,7 +470,7 @@ The API validates cron expressions at creation time using the cron library's par
 | `web/src/components/pages/grove-detail.ts` | Add scheduled events section |
 | `web/src/components/pages/admin-scheduler.ts` | Add cancel action on pending events |
 
-### Phase 2: Recurring Schedule Infrastructure
+### Phase 2: Recurring Schedule Infrastructure ✅ COMPLETE
 
 **Goal:** Database-backed recurring schedules with cron evaluation in the scheduler.
 
