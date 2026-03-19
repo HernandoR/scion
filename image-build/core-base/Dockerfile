@@ -36,7 +36,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Go
-ARG GO_VERSION=1.25.4
+ARG GO_VERSION=1.26.1
 RUN ARCH=$(dpkg --print-architecture) && \
     case "${ARCH}" in \
       amd64) GO_ARCH='linux-amd64' ;; \
