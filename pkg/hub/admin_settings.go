@@ -261,6 +261,18 @@ func (s *Server) reloadSettings() map[string]interface{} {
 		slog.SetLogLoggerLevel(level)
 		applied = append(applied, "log_level")
 	}
+
+	// Reload GitHub App non-sensitive config
+	if gc.GitHubApp.AppID != 0 {
+		s.config.GitHubAppConfig.AppID = gc.GitHubApp.AppID
+		s.config.GitHubAppConfig.APIBaseURL = gc.GitHubApp.APIBaseURL
+		s.config.GitHubAppConfig.WebhooksEnabled = gc.GitHubApp.WebhooksEnabled
+		if gc.GitHubApp.PrivateKeyPath != "" {
+			s.config.GitHubAppConfig.PrivateKeyPath = gc.GitHubApp.PrivateKeyPath
+		}
+		// In-memory private key and webhook secret are kept as-is (loaded from secrets backend)
+		applied = append(applied, "github_app")
+	}
 	s.mu.Unlock()
 
 	// Settings that require restart

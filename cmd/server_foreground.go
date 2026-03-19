@@ -625,6 +625,14 @@ func initHubServer(ctx context.Context, cfg *config.GlobalConfig, s store.Store,
 		MaintenanceMessage:    maintenanceMessage,
 		TelemetryDefault:      cfg.TelemetryEnabled,
 		BrokerAuthConfig:      hub.DefaultBrokerAuthConfig(),
+		GitHubAppConfig: hub.GitHubAppServerConfig{
+			AppID:           cfg.GitHubApp.AppID,
+			PrivateKeyPath:  cfg.GitHubApp.PrivateKeyPath,
+			PrivateKey:      cfg.GitHubApp.PrivateKey,
+			WebhookSecret:   cfg.GitHubApp.WebhookSecret,
+			APIBaseURL:      cfg.GitHubApp.APIBaseURL,
+			WebhooksEnabled: cfg.GitHubApp.WebhooksEnabled,
+		},
 		OAuthConfig: hub.OAuthConfig{
 			Web: hub.OAuthClientConfig{
 				Google: hub.OAuthProviderConfig{

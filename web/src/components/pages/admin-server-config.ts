@@ -219,6 +219,8 @@ interface GitHubAppConfigData {
   api_base_url?: string;
   webhooks_enabled: boolean;
   configured: boolean;
+  has_private_key: boolean;
+  has_webhook_secret: boolean;
   rate_limit?: RateLimitInfo;
 }
 
@@ -319,6 +321,13 @@ export class ScionPageAdminServerConfig extends LitElement {
   @state() private githubAppId = 0;
   @state() private githubAppApiBaseUrl = '';
   @state() private githubAppWebhooksEnabled = false;
+  @state() private githubAppHasPrivateKey = false;
+  @state() private githubAppHasWebhookSecret = false;
+  @state() private githubAppPrivateKey = '';
+  @state() private githubAppWebhookSecret = '';
+  @state() private githubAppSaving = false;
+  @state() private githubAppError: string | null = null;
+  @state() private githubAppSuccess: string | null = null;
   @state() private githubAppInstallations: GitHubInstallationInfo[] = [];
   @state() private githubAppInstallationsLoading = false;
   @state() private githubAppSyncLoading = false;
@@ -1745,45 +1754,113 @@ export class ScionPageAdminServerConfig extends LitElement {
 
   private renderGitHubAppTab() {
     return html`
+      ${this.githubAppError ? html`<div class="status-message error">${this.githubAppError}</div>` : ''}
+      ${this.githubAppSuccess ? html`<div class="status-message success">${this.githubAppSuccess}</div>` : ''}
+
       <div class="section">
         <h3 class="section-title">GitHub App Configuration</h3>
-        ${this.githubAppConfigured
-          ? html`
-              <div class="form-grid">
-                <div class="form-field">
-                  <label>App ID</label>
-                  <span class="hint">GitHub App ID (read-only)</span>
-                  <sl-input value=${String(this.githubAppId)} disabled></sl-input>
-                </div>
-                <div class="form-field">
-                  <label>API Base URL</label>
-                  <span class="hint">GitHub API endpoint (default: api.github.com)</span>
-                  <sl-input value=${this.githubAppApiBaseUrl || 'https://api.github.com'} disabled></sl-input>
-                </div>
-                <div class="form-field">
-                  <label>Webhooks</label>
-                  <sl-switch ?checked=${this.githubAppWebhooksEnabled} disabled>
-                    ${this.githubAppWebhooksEnabled ? 'Enabled' : 'Disabled'}
-                  </sl-switch>
-                </div>
-              </div>
-              ${this.githubAppRateLimit ? html`
-                <div style="margin-top: 1rem;">
-                  <span class="hint">Rate Limit</span>
-                  <div style="font-size: 0.875rem; margin-top: 0.25rem;">
-                    ${this.githubAppRateLimit.remaining}/${this.githubAppRateLimit.limit} remaining
-                    ${this.githubAppRateLimit.remaining < this.githubAppRateLimit.limit / 5
-                      ? html`<span style="color: var(--sl-color-danger-600);">  (low)</span>`
-                      : ''}
-                  </div>
-                </div>
-              ` : ''}
-            `
-          : html`
-              <p style="color: var(--scion-text-muted, #64748b);">
-                GitHub App is not configured. Configure the App ID and private key in settings.yaml to enable GitHub App authentication for agents.
-              </p>
-            `}
+        <div class="form-grid">
+          <div class="form-field">
+            <label>App ID</label>
+            <span class="hint">The numeric ID of your registered GitHub App</span>
+            <sl-input
+              type="number"
+              value=${this.githubAppId ? String(this.githubAppId) : ''}
+              placeholder="e.g. 123456"
+              @sl-input=${(e: Event) => {
+                this.githubAppId = parseInt((e.target as HTMLInputElement).value) || 0;
+              }}
+            ></sl-input>
+          </div>
+          <div class="form-field">
+            <label>API Base URL</label>
+            <span class="hint">Override for GitHub Enterprise Server (leave empty for github.com)</span>
+            <sl-input
+              value=${this.githubAppApiBaseUrl}
+              placeholder="https://api.github.com"
+              @sl-input=${(e: Event) => {
+                this.githubAppApiBaseUrl = (e.target as HTMLInputElement).value;
+              }}
+            ></sl-input>
+          </div>
+          <div class="form-field full-width">
+            <label>Private Key (PEM)</label>
+            <span class="hint">
+              ${this.githubAppHasPrivateKey
+                ? 'A private key is configured. Paste a new key to replace it, or leave empty to keep the current key.'
+                : 'Paste the PEM-encoded private key from your GitHub App settings.'}
+            </span>
+            <sl-textarea
+              rows=${4}
+              value=${this.githubAppPrivateKey}
+              placeholder=${this.githubAppHasPrivateKey ? '(configured — leave empty to keep current)' : '-----BEGIN RSA PRIVATE KEY-----\n...'}
+              @sl-input=${(e: Event) => {
+                this.githubAppPrivateKey = (e.target as HTMLTextAreaElement).value;
+              }}
+            ></sl-textarea>
+            ${this.githubAppHasPrivateKey
+              ? html`<span style="font-size: 0.75rem; color: var(--scion-success-text, #166534);">Stored as hub secret: GITHUB_APP_PRIVATE_KEY</span>`
+              : ''}
+          </div>
+          <div class="form-field">
+            <label>Webhook Secret</label>
+            <span class="hint">
+              ${this.githubAppHasWebhookSecret
+                ? 'A webhook secret is configured. Enter a new value to replace it.'
+                : 'Secret for validating incoming GitHub webhook payloads.'}
+            </span>
+            <sl-input
+              type="password"
+              password-toggle
+              value=${this.githubAppWebhookSecret}
+              placeholder=${this.githubAppHasWebhookSecret ? '(configured — leave empty to keep current)' : 'whsec_...'}
+              @sl-input=${(e: Event) => {
+                this.githubAppWebhookSecret = (e.target as HTMLInputElement).value;
+              }}
+            ></sl-input>
+            ${this.githubAppHasWebhookSecret
+              ? html`<span style="font-size: 0.75rem; color: var(--scion-success-text, #166534);">Stored as hub secret: GITHUB_APP_WEBHOOK_SECRET</span>`
+              : ''}
+          </div>
+          <div class="form-field">
+            <label>Webhooks</label>
+            <span class="hint">Enable to receive installation lifecycle events from GitHub</span>
+            <sl-switch
+              ?checked=${this.githubAppWebhooksEnabled}
+              @sl-change=${(e: Event) => {
+                this.githubAppWebhooksEnabled = (e.target as HTMLInputElement).checked;
+              }}
+            >
+              ${this.githubAppWebhooksEnabled ? 'Enabled' : 'Disabled'}
+            </sl-switch>
+          </div>
+        </div>
+
+        ${this.githubAppRateLimit ? html`
+          <div style="margin-top: 1rem;">
+            <span class="hint">Rate Limit</span>
+            <div style="font-size: 0.875rem; margin-top: 0.25rem;">
+              ${this.githubAppRateLimit.remaining}/${this.githubAppRateLimit.limit} remaining
+              ${this.githubAppRateLimit.remaining < this.githubAppRateLimit.limit / 5
+                ? html`<span style="color: var(--sl-color-danger-600);">  (low)</span>`
+                : ''}
+            </div>
+          </div>
+        ` : ''}
+
+        <div class="actions">
+          <sl-button
+            variant="primary"
+            ?loading=${this.githubAppSaving}
+            @click=${() => this.handleSaveGitHubApp()}
+          >
+            <sl-icon slot="prefix" name="check-lg"></sl-icon>
+            Save GitHub App Configuration
+          </sl-button>
+          ${this.githubAppConfigured
+            ? html`<span style="font-size: 0.75rem; color: var(--scion-success-text, #166534);">Configured</span>`
+            : html`<span style="font-size: 0.75rem; color: var(--scion-text-muted, #64748b);">Not configured</span>`}
+        </div>
       </div>
 
       ${this.githubAppConfigured ? html`
@@ -1844,7 +1921,12 @@ export class ScionPageAdminServerConfig extends LitElement {
         this.githubAppId = data.app_id;
         this.githubAppApiBaseUrl = data.api_base_url || '';
         this.githubAppWebhooksEnabled = data.webhooks_enabled;
+        this.githubAppHasPrivateKey = data.has_private_key;
+        this.githubAppHasWebhookSecret = data.has_webhook_secret;
         this.githubAppRateLimit = data.rate_limit || null;
+        // Clear write-only fields after load
+        this.githubAppPrivateKey = '';
+        this.githubAppWebhookSecret = '';
       }
     } catch (e) {
       // Non-critical — tab just shows unconfigured state
@@ -1903,6 +1985,52 @@ export class ScionPageAdminServerConfig extends LitElement {
       this.githubAppSyncResult = 'Sync failed: network error';
     } finally {
       this.githubAppSyncLoading = false;
+    }
+  }
+
+  private async handleSaveGitHubApp(): Promise<void> {
+    this.githubAppSaving = true;
+    this.githubAppError = null;
+    this.githubAppSuccess = null;
+
+    try {
+      const payload: Record<string, unknown> = {
+        app_id: this.githubAppId || undefined,
+        api_base_url: this.githubAppApiBaseUrl || undefined,
+        webhooks_enabled: this.githubAppWebhooksEnabled,
+      };
+
+      // Only send secrets if the user provided new values
+      if (this.githubAppPrivateKey.trim()) {
+        payload.private_key = this.githubAppPrivateKey.trim();
+      }
+      if (this.githubAppWebhookSecret.trim()) {
+        payload.webhook_secret = this.githubAppWebhookSecret.trim();
+      }
+
+      const res = await apiFetch('/api/v1/github-app', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const err = await extractApiError(res, 'Failed to save GitHub App configuration');
+        this.githubAppError = err;
+        return;
+      }
+
+      this.githubAppSuccess = 'GitHub App configuration saved successfully.';
+      // Reload to get fresh state (has_private_key, has_webhook_secret, configured)
+      await this.loadGitHubAppConfig();
+      // Reload installations if now configured
+      if (this.githubAppConfigured) {
+        await this.loadGitHubAppInstallations();
+      }
+    } catch {
+      this.githubAppError = 'Failed to save GitHub App configuration';
+    } finally {
+      this.githubAppSaving = false;
     }
   }
 }

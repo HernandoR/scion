@@ -19,22 +19,35 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/GoogleCloudPlatform/scion/pkg/config"
 	"github.com/GoogleCloudPlatform/scion/pkg/hub/githubapp"
+	"github.com/GoogleCloudPlatform/scion/pkg/secret"
 	"github.com/GoogleCloudPlatform/scion/pkg/store"
+	yamlv3 "gopkg.in/yaml.v3"
+)
+
+// Well-known secret keys for GitHub App credentials stored via the secrets system.
+const (
+	GitHubAppSecretPrivateKey    = "GITHUB_APP_PRIVATE_KEY"
+	GitHubAppSecretWebhookSecret = "GITHUB_APP_WEBHOOK_SECRET"
 )
 
 // GitHubAppConfigResponse is the API response for GitHub App configuration.
 // Sensitive fields (private key, webhook secret) are never returned.
 type GitHubAppConfigResponse struct {
-	AppID           int64                    `json:"app_id"`
-	APIBaseURL      string                   `json:"api_base_url,omitempty"`
-	WebhooksEnabled bool                     `json:"webhooks_enabled"`
-	Configured      bool                     `json:"configured"`
-	RateLimit       *githubapp.RateLimitInfo `json:"rate_limit,omitempty"`
+	AppID            int64                    `json:"app_id"`
+	APIBaseURL       string                   `json:"api_base_url,omitempty"`
+	WebhooksEnabled  bool                     `json:"webhooks_enabled"`
+	Configured       bool                     `json:"configured"`
+	HasPrivateKey    bool                     `json:"has_private_key"`
+	HasWebhookSecret bool                     `json:"has_webhook_secret"`
+	RateLimit        *githubapp.RateLimitInfo `json:"rate_limit,omitempty"`
 }
 
 // GitHubAppConfigUpdateRequest is the API request to update GitHub App configuration.
@@ -64,12 +77,33 @@ func (s *Server) handleGetGitHubApp(w http.ResponseWriter, r *http.Request) {
 	rateLimit := s.githubAppRateLimit
 	s.mu.RUnlock()
 
+	hasPrivateKey := cfg.PrivateKey != "" || cfg.PrivateKeyPath != ""
+	hasWebhookSecret := cfg.WebhookSecret != ""
+
+	// Also check secrets backend for stored credentials
+	if !hasPrivateKey || !hasWebhookSecret {
+		if s.secretBackend != nil {
+			if !hasPrivateKey {
+				if meta, err := s.secretBackend.GetMeta(r.Context(), GitHubAppSecretPrivateKey, store.ScopeHub, store.ScopeIDHub); err == nil && meta != nil {
+					hasPrivateKey = true
+				}
+			}
+			if !hasWebhookSecret {
+				if meta, err := s.secretBackend.GetMeta(r.Context(), GitHubAppSecretWebhookSecret, store.ScopeHub, store.ScopeIDHub); err == nil && meta != nil {
+					hasWebhookSecret = true
+				}
+			}
+		}
+	}
+
 	writeJSON(w, http.StatusOK, GitHubAppConfigResponse{
-		AppID:           cfg.AppID,
-		APIBaseURL:      cfg.APIBaseURL,
-		WebhooksEnabled: cfg.WebhooksEnabled,
-		Configured:      cfg.AppID != 0 && (cfg.PrivateKeyPath != "" || cfg.PrivateKey != ""),
-		RateLimit:       rateLimit,
+		AppID:            cfg.AppID,
+		APIBaseURL:       cfg.APIBaseURL,
+		WebhooksEnabled:  cfg.WebhooksEnabled,
+		Configured:       cfg.AppID != 0 && hasPrivateKey,
+		HasPrivateKey:    hasPrivateKey,
+		HasWebhookSecret: hasWebhookSecret,
+		RateLimit:        rateLimit,
 	})
 }
 
@@ -80,15 +114,39 @@ func (s *Server) handleUpdateGitHubApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ctx := r.Context()
+	user := GetUserIdentityFromContext(ctx)
+	userID := ""
+	if user != nil {
+		userID = user.ID()
+	}
+
+	// Store sensitive fields via secrets backend
+	if req.PrivateKey != nil && *req.PrivateKey != "" {
+		if err := s.setGitHubAppSecret(ctx, GitHubAppSecretPrivateKey, *req.PrivateKey, "GitHub App private key (PEM)", userID); err != nil {
+			writeError(w, http.StatusInternalServerError, ErrCodeInternalError, fmt.Sprintf("failed to store private key: %v", err), nil)
+			return
+		}
+		// Update in-memory config so it's immediately available
+		s.mu.Lock()
+		s.config.GitHubAppConfig.PrivateKey = *req.PrivateKey
+		s.mu.Unlock()
+	}
+
+	if req.WebhookSecret != nil && *req.WebhookSecret != "" {
+		if err := s.setGitHubAppSecret(ctx, GitHubAppSecretWebhookSecret, *req.WebhookSecret, "GitHub App webhook secret", userID); err != nil {
+			writeError(w, http.StatusInternalServerError, ErrCodeInternalError, fmt.Sprintf("failed to store webhook secret: %v", err), nil)
+			return
+		}
+		s.mu.Lock()
+		s.config.GitHubAppConfig.WebhookSecret = *req.WebhookSecret
+		s.mu.Unlock()
+	}
+
+	// Update non-sensitive fields in-memory
 	s.mu.Lock()
 	if req.AppID != nil {
 		s.config.GitHubAppConfig.AppID = *req.AppID
-	}
-	if req.PrivateKey != nil {
-		s.config.GitHubAppConfig.PrivateKey = *req.PrivateKey
-	}
-	if req.WebhookSecret != nil {
-		s.config.GitHubAppConfig.WebhookSecret = *req.WebhookSecret
 	}
 	if req.APIBaseURL != nil {
 		s.config.GitHubAppConfig.APIBaseURL = *req.APIBaseURL
@@ -99,12 +157,139 @@ func (s *Server) handleUpdateGitHubApp(w http.ResponseWriter, r *http.Request) {
 	cfg := s.config.GitHubAppConfig
 	s.mu.Unlock()
 
+	// Persist non-sensitive config to settings.yaml (best-effort — in-memory and secrets are already saved)
+	if err := s.persistGitHubAppConfig(cfg); err != nil {
+		slog.Warn("Failed to persist GitHub App config to settings.yaml (in-memory config updated successfully)", "error", err)
+	}
+
+	hasPrivateKey := cfg.PrivateKey != "" || cfg.PrivateKeyPath != ""
+	hasWebhookSecret := cfg.WebhookSecret != ""
+	// Check secrets backend too
+	if !hasPrivateKey && s.secretBackend != nil {
+		if meta, err := s.secretBackend.GetMeta(ctx, GitHubAppSecretPrivateKey, store.ScopeHub, store.ScopeIDHub); err == nil && meta != nil {
+			hasPrivateKey = true
+		}
+	}
+	if !hasWebhookSecret && s.secretBackend != nil {
+		if meta, err := s.secretBackend.GetMeta(ctx, GitHubAppSecretWebhookSecret, store.ScopeHub, store.ScopeIDHub); err == nil && meta != nil {
+			hasWebhookSecret = true
+		}
+	}
+
+	slog.Info("GitHub App configuration updated via admin API", "user", userID, "app_id", cfg.AppID)
+
 	writeJSON(w, http.StatusOK, GitHubAppConfigResponse{
-		AppID:           cfg.AppID,
-		APIBaseURL:      cfg.APIBaseURL,
-		WebhooksEnabled: cfg.WebhooksEnabled,
-		Configured:      cfg.AppID != 0 && (cfg.PrivateKeyPath != "" || cfg.PrivateKey != ""),
+		AppID:            cfg.AppID,
+		APIBaseURL:       cfg.APIBaseURL,
+		WebhooksEnabled:  cfg.WebhooksEnabled,
+		Configured:       cfg.AppID != 0 && hasPrivateKey,
+		HasPrivateKey:    hasPrivateKey,
+		HasWebhookSecret: hasWebhookSecret,
 	})
+}
+
+// setGitHubAppSecret stores a GitHub App secret via the secrets backend,
+// falling back to direct store if the backend is unavailable.
+func (s *Server) setGitHubAppSecret(ctx context.Context, name, value, description, userID string) error {
+	if s.secretBackend != nil {
+		_, _, err := s.secretBackend.Set(ctx, &secret.SetSecretInput{
+			Name:          name,
+			Value:         value,
+			SecretType:    secret.TypeVariable,
+			Scope:         store.ScopeHub,
+			ScopeID:       store.ScopeIDHub,
+			Description:   description,
+			InjectionMode: "as_needed",
+			CreatedBy:     userID,
+			UpdatedBy:     userID,
+		})
+		return err
+	}
+
+	// Fallback: store directly in the database (same pattern as ensureSigningKey)
+	sec := &store.Secret{
+		ID:             fmt.Sprintf("hub-ghapp-%s", strings.ToLower(strings.ReplaceAll(name, "_", "-"))),
+		Key:            name,
+		EncryptedValue: value,
+		Scope:          store.ScopeHub,
+		ScopeID:        store.ScopeIDHub,
+		SecretType:     store.SecretTypeVariable,
+		Description:    description,
+		Version:        1,
+		CreatedBy:      userID,
+		UpdatedBy:      userID,
+	}
+	_, err := s.store.UpsertSecret(ctx, sec)
+	return err
+}
+
+// loadGitHubAppSecret loads a GitHub App secret from the secrets backend,
+// falling back to direct store lookup.
+func (s *Server) loadGitHubAppSecret(ctx context.Context, name string) (string, error) {
+	if s.secretBackend != nil {
+		sv, err := s.secretBackend.Get(ctx, name, store.ScopeHub, store.ScopeIDHub)
+		if err != nil {
+			return "", err
+		}
+		return sv.Value, nil
+	}
+
+	// Fallback: read directly from the database
+	return s.store.GetSecretValue(ctx, name, store.ScopeHub, store.ScopeIDHub)
+}
+
+// persistGitHubAppConfig writes the non-sensitive GitHub App configuration
+// fields to settings.yaml. Sensitive values (private key, webhook secret) are
+// stored via the secrets system and are NOT written to settings.yaml.
+func (s *Server) persistGitHubAppConfig(cfg GitHubAppServerConfig) error {
+	globalDir, err := config.GetGlobalDir()
+	if err != nil {
+		return fmt.Errorf("failed to resolve settings directory: %w", err)
+	}
+
+	settingsPath := filepath.Join(globalDir, "settings.yaml")
+
+	var raw map[string]interface{}
+	if data, err := os.ReadFile(settingsPath); err == nil {
+		if err := yamlv3.Unmarshal(data, &raw); err != nil {
+			return fmt.Errorf("failed to parse existing settings: %w", err)
+		}
+	}
+	if raw == nil {
+		raw = make(map[string]interface{})
+	}
+
+	// Build the github_app section with only non-sensitive fields
+	ghApp := map[string]interface{}{}
+	if cfg.AppID != 0 {
+		ghApp["app_id"] = cfg.AppID
+	}
+	if cfg.APIBaseURL != "" {
+		ghApp["api_base_url"] = cfg.APIBaseURL
+	}
+	if cfg.WebhooksEnabled {
+		ghApp["webhooks_enabled"] = cfg.WebhooksEnabled
+	}
+	// Preserve existing private_key_path if it was set via settings.yaml directly
+	if cfg.PrivateKeyPath != "" {
+		ghApp["private_key_path"] = cfg.PrivateKeyPath
+	}
+
+	if len(ghApp) > 0 {
+		raw["github_app"] = ghApp
+	}
+
+	// Ensure schema_version is set
+	if _, ok := raw["schema_version"]; !ok {
+		raw["schema_version"] = "1"
+	}
+
+	newData, err := yamlv3.Marshal(raw)
+	if err != nil {
+		return fmt.Errorf("failed to marshal settings: %w", err)
+	}
+
+	return os.WriteFile(settingsPath, newData, 0644)
 }
 
 // handleGitHubAppInstallations handles GET and POST /api/v1/github-app/installations.

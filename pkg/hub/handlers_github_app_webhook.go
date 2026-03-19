@@ -47,10 +47,15 @@ func (s *Server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify webhook signature
+	// Verify webhook signature — check in-memory config first, then secrets backend
 	s.mu.RLock()
 	webhookSecret := s.config.GitHubAppConfig.WebhookSecret
 	s.mu.RUnlock()
+	if webhookSecret == "" {
+		if sec, err := s.loadGitHubAppSecret(r.Context(), GitHubAppSecretWebhookSecret); err == nil {
+			webhookSecret = sec
+		}
+	}
 
 	signature := r.Header.Get("X-Hub-Signature-256")
 	if webhookSecret != "" {
@@ -655,6 +660,8 @@ func isValidOwnerRepo(s string) bool {
 }
 
 // getGitHubAppClient creates a GitHub App client from the server's configuration.
+// It resolves the private key from: 1) in-memory config, 2) private key file path,
+// 3) secrets backend (hub-scoped GITHUB_APP_PRIVATE_KEY secret).
 func (s *Server) getGitHubAppClient() (*githubapp.Client, error) {
 	s.mu.RLock()
 	cfg := s.config.GitHubAppConfig
@@ -675,7 +682,12 @@ func (s *Server) getGitHubAppClient() (*githubapp.Client, error) {
 			return nil, fmt.Errorf("failed to read private key file: %w", err)
 		}
 	} else {
-		return nil, fmt.Errorf("github app not configured: missing private key")
+		// Try loading from secrets backend
+		keyStr, secretErr := s.loadGitHubAppSecret(context.Background(), GitHubAppSecretPrivateKey)
+		if secretErr != nil || keyStr == "" {
+			return nil, fmt.Errorf("github app not configured: missing private key")
+		}
+		keyData = []byte(keyStr)
 	}
 
 	return githubapp.NewClient(githubapp.Config{
