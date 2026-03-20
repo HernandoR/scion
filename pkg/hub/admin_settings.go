@@ -267,6 +267,7 @@ func (s *Server) reloadSettings() map[string]interface{} {
 		s.config.GitHubAppConfig.AppID = gc.GitHubApp.AppID
 		s.config.GitHubAppConfig.APIBaseURL = gc.GitHubApp.APIBaseURL
 		s.config.GitHubAppConfig.WebhooksEnabled = gc.GitHubApp.WebhooksEnabled
+		s.config.GitHubAppConfig.InstallationURL = gc.GitHubApp.InstallationURL
 		if gc.GitHubApp.PrivateKeyPath != "" {
 			s.config.GitHubAppConfig.PrivateKeyPath = gc.GitHubApp.PrivateKeyPath
 		}
