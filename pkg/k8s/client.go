@@ -113,11 +113,6 @@ func NewClientWithContext(kubeconfigPath, contextName string) (*Client, error) {
 }
 
 // Verify performs a lightweight API call (ServerVersion) to validate that
-// cluster connectivity and credentials work. This catches exec-based auth
-// plugin failures (e.g. gke-gcloud-auth-plugin) early with actionable errors
-// instead of letting them surface as confusing nested errors on the first real
-// API call.
-// Verify performs a lightweight API call (ServerVersion) to validate that
 // cluster connectivity and credentials work. If the kubeconfig uses an
 // exec-based credential plugin (e.g. gke-gcloud-auth-plugin) and it fails,
 // Verify attempts to fall back to GCE metadata-based auth when running on
@@ -199,6 +194,16 @@ func (c *Client) fallbackToGCEAuth() error {
 	c.dynamic = newDynamic
 	c.Config = newConfig
 	return nil
+}
+
+// IsGKE returns true if the connected cluster is a GKE cluster, detected by
+// the presence of "-gke." in the server version string (e.g. "v1.28.3-gke.1286000").
+func (c *Client) IsGKE() bool {
+	ver, err := c.Clientset.Discovery().ServerVersion()
+	if err != nil {
+		return false
+	}
+	return strings.Contains(ver.GitVersion, "-gke.")
 }
 
 func NewTestClient(dyn dynamic.Interface, cs kubernetes.Interface) *Client {
