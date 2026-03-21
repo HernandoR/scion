@@ -827,20 +827,23 @@ export class ScionPageGroveDetail extends LitElement {
 
   private renderGroveIcon() {
     if (!this.grove) return nothing;
-    const type = this.grove.groveType || 'hub-native';
-    const icon = { 'linked': 'link-45deg', 'hub-native': 'folder-fill' }[type] ?? 'folder-fill';
     const hasGitHub = this.grove.githubInstallationId != null;
     if (hasGitHub) {
       return html`
         <sl-tooltip content="GitHub App installed">
           <span style="position: relative; display: inline-flex;">
-            <sl-icon name=${icon}></sl-icon>
+            <sl-icon name="folder-fill"></sl-icon>
             <sl-icon name="github" style="position: absolute; bottom: -4px; right: -6px; font-size: 1.125rem; background: var(--scion-bg, #fff); border-radius: 50%;"></sl-icon>
           </span>
         </sl-tooltip>
       `;
     }
-    return html`<sl-icon name=${icon}></sl-icon>`;
+    return html`<sl-icon name="folder-fill"></sl-icon>`;
+  }
+
+  private renderLinkedBadge() {
+    if (!this.grove || this.grove.groveType !== 'linked') return nothing;
+    return html` <sl-tooltip content="Linked grove"><sl-icon name="link-45deg" style="font-size: 0.875rem; vertical-align: middle; opacity: 0.7;"></sl-icon></sl-tooltip>`;
   }
 
   private formatDate(dateString: string): string {
@@ -1168,7 +1171,7 @@ export class ScionPageGroveDetail extends LitElement {
         <div class="header-info">
           <div class="header-title">
             ${this.renderGroveIcon()}
-            <h1>${this.grove.name}</h1>
+            <h1>${this.grove.name}${this.renderLinkedBadge()}</h1>
           </div>
           <div class="header-path">${this.grove.gitRemote || (this.grove.groveType === 'linked' ? 'Linked grove' : 'Hub Workspace')}</div>
         </div>

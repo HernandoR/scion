@@ -337,21 +337,13 @@ export class ScionPageGroves extends LitElement {
     `;
   }
 
-  private groveTypeConfig(grove: Grove) {
-    const type = grove.groveType || 'hub-native';
-    const config = {
-      'linked': { icon: 'link-45deg', label: 'Linked grove' },
-      'hub-native': { icon: 'folder-fill', label: 'Hub workspace' },
-    }[type] ?? { icon: 'folder-fill', label: 'Hub workspace' };
-    return config;
+  private renderGroveIcon() {
+    return html`<sl-icon name="folder-fill"></sl-icon>`;
   }
 
-  private renderGroveIcon(grove: Grove, withTooltip = false) {
-    const config = this.groveTypeConfig(grove);
-    if (withTooltip) {
-      return html`<sl-tooltip content=${config.label}><sl-icon name=${config.icon}></sl-icon></sl-tooltip>`;
-    }
-    return html`<sl-icon name=${config.icon}></sl-icon>`;
+  private renderLinkedBadge(grove: Grove) {
+    if (grove.groveType !== 'linked') return nothing;
+    return html` <sl-tooltip content="Linked grove"><sl-icon name="link-45deg" style="font-size: 0.875rem; vertical-align: middle; opacity: 0.7;"></sl-icon></sl-tooltip>`;
   }
 
   private renderGroveCard(grove: Grove) {
@@ -360,10 +352,10 @@ export class ScionPageGroves extends LitElement {
         <div class="grove-header">
           <div>
             <h3 class="resource-name">
-              ${this.renderGroveIcon(grove, true)}
-              ${grove.name}
+              ${this.renderGroveIcon()}
+              ${grove.name}${this.renderLinkedBadge(grove)}
             </h3>
-            <div class="grove-path">${grove.gitRemote || grove.path || this.groveTypeConfig(grove).label}${grove.githubInstallationId != null ? html` <sl-tooltip content="GitHub App installed"><sl-icon name="github" style="font-size: 0.875rem; vertical-align: middle; opacity: 0.7;"></sl-icon></sl-tooltip>` : ''}</div>
+            <div class="grove-path">${grove.gitRemote || grove.path || (grove.groveType === 'linked' ? 'Linked grove' : 'Hub workspace')}${grove.githubInstallationId != null ? html` <sl-tooltip content="GitHub App installed"><sl-icon name="github" style="font-size: 0.875rem; vertical-align: middle; opacity: 0.7;"></sl-icon></sl-tooltip>` : ''}</div>
           </div>
         </div>
         <div class="grove-stats">
@@ -410,11 +402,11 @@ export class ScionPageGroves extends LitElement {
       }}>
         <td>
           <span class="name-cell">
-            ${this.renderGroveIcon(grove)}
-            ${grove.name}
+            ${this.renderGroveIcon()}
+            ${grove.name}${this.renderLinkedBadge(grove)}
           </span>
         </td>
-        <td class="mono-cell">${grove.gitRemote || grove.path || this.groveTypeConfig(grove).label}${grove.githubInstallationId != null ? html` <sl-tooltip content="GitHub App installed"><sl-icon name="github" style="font-size: 0.875rem; vertical-align: middle; opacity: 0.7;"></sl-icon></sl-tooltip>` : ''}</td>
+        <td class="mono-cell">${grove.gitRemote || grove.path || (grove.groveType === 'linked' ? 'Linked grove' : 'Hub workspace')}${grove.githubInstallationId != null ? html` <sl-tooltip content="GitHub App installed"><sl-icon name="github" style="font-size: 0.875rem; vertical-align: middle; opacity: 0.7;"></sl-icon></sl-tooltip>` : ''}</td>
         <td>${grove.agentCount}</td>
         <td class="hide-mobile">
           <span class="meta-text">${grove.ownerName || '—'}</span>
