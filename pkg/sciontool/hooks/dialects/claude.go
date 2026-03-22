@@ -83,6 +83,9 @@ func (d *ClaudeDialect) Parse(data map[string]interface{}) (*hooks.Event, error)
 	// Claude Code may report tokens at top level or inside a usage map.
 	extractTokens(data, &event.Data)
 
+	// Extract file_path from tool_input/tool_response objects
+	extractFilePath(data, &event.Data)
+
 	return event, nil
 }
 

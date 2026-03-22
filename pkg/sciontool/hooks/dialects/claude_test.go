@@ -125,6 +125,70 @@ func TestClaudeDialect_Parse(t *testing.T) {
 	}
 }
 
+func TestClaudeDialect_ParseFilePath(t *testing.T) {
+	d := NewClaudeDialect()
+
+	t.Run("file_path from tool_input object", func(t *testing.T) {
+		event, err := d.Parse(map[string]interface{}{
+			"hook_event_name": "PostToolUse",
+			"tool_name":       "Write",
+			"tool_input": map[string]interface{}{
+				"file_path": "/path/to/file.txt",
+				"content":   "file content",
+			},
+		})
+		require.NoError(t, err)
+		assert.Equal(t, "/path/to/file.txt", event.Data.FilePath)
+	})
+
+	t.Run("file_path from tool_response camelCase", func(t *testing.T) {
+		event, err := d.Parse(map[string]interface{}{
+			"hook_event_name": "PostToolUse",
+			"tool_name":       "Write",
+			"tool_response": map[string]interface{}{
+				"filePath": "/path/to/written.txt",
+				"success":  true,
+			},
+		})
+		require.NoError(t, err)
+		assert.Equal(t, "/path/to/written.txt", event.Data.FilePath)
+	})
+
+	t.Run("tool_input takes priority over tool_response", func(t *testing.T) {
+		event, err := d.Parse(map[string]interface{}{
+			"hook_event_name": "PostToolUse",
+			"tool_name":       "Write",
+			"tool_input": map[string]interface{}{
+				"file_path": "/from/input.txt",
+			},
+			"tool_response": map[string]interface{}{
+				"filePath": "/from/response.txt",
+			},
+		})
+		require.NoError(t, err)
+		assert.Equal(t, "/from/input.txt", event.Data.FilePath)
+	})
+
+	t.Run("no file_path when tool_input is string", func(t *testing.T) {
+		event, err := d.Parse(map[string]interface{}{
+			"hook_event_name": "PostToolUse",
+			"tool_name":       "Bash",
+			"tool_input":      "ls -la",
+		})
+		require.NoError(t, err)
+		assert.Empty(t, event.Data.FilePath)
+	})
+
+	t.Run("no file_path when absent", func(t *testing.T) {
+		event, err := d.Parse(map[string]interface{}{
+			"hook_event_name": "PostToolUse",
+			"tool_name":       "Bash",
+		})
+		require.NoError(t, err)
+		assert.Empty(t, event.Data.FilePath)
+	})
+}
+
 func TestClaudeDialect_ParseTokens(t *testing.T) {
 	d := NewClaudeDialect()
 

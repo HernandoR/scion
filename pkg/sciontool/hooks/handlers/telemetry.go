@@ -340,6 +340,9 @@ func (h *TelemetryHandler) emitLogRecord(ctx context.Context, event *hooks.Event
 		}
 		attrs = append(attrs, slog.String("tool_output", val))
 	}
+	if event.Data.FilePath != "" {
+		attrs = append(attrs, slog.String("file_path", event.Data.FilePath))
+	}
 	if event.Data.Prompt != "" {
 		val := event.Data.Prompt
 		if h.redactor != nil && h.redactor.ShouldRedact("prompt") {
@@ -415,6 +418,10 @@ func (h *TelemetryHandler) eventToAttributes(event *hooks.Event) []attribute.Key
 			val = "[REDACTED]"
 		}
 		attrs = append(attrs, attribute.String("tool_output", val))
+	}
+
+	if event.Data.FilePath != "" {
+		attrs = append(attrs, attribute.String("file_path", event.Data.FilePath))
 	}
 
 	if event.Data.Prompt != "" {

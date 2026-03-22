@@ -99,7 +99,6 @@ func TestGeminiDialect_Parse(t *testing.T) {
 	}
 
 	d := NewGeminiDialect()
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			event, err := d.Parse(tt.input)
@@ -115,4 +114,32 @@ func TestGeminiDialect_Parse(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGeminiDialect_ParseFilePath(t *testing.T) {
+	d := NewGeminiDialect()
+
+	t.Run("file_path from tool_input object", func(t *testing.T) {
+		event, err := d.Parse(map[string]interface{}{
+			"hook_event_name": "AfterTool",
+			"tool_name":       "replace",
+			"tool_input": map[string]interface{}{
+				"file_path":  "src/index.ts",
+				"old_string": "foo",
+				"new_string": "bar",
+			},
+		})
+		require.NoError(t, err)
+		assert.Equal(t, "src/index.ts", event.Data.FilePath)
+	})
+
+	t.Run("no file_path when tool_input is string", func(t *testing.T) {
+		event, err := d.Parse(map[string]interface{}{
+			"hook_event_name": "AfterTool",
+			"tool_name":       "shell",
+			"tool_input":      "ls -la",
+		})
+		require.NoError(t, err)
+		assert.Empty(t, event.Data.FilePath)
+	})
 }

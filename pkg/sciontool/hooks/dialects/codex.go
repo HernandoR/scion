@@ -65,6 +65,9 @@ func (d *CodexDialect) Parse(data map[string]interface{}) (*hooks.Event, error) 
 	// Extract token usage
 	extractTokens(data, &event.Data)
 
+	// Extract file_path from tool_input/tool_response objects
+	extractFilePath(data, &event.Data)
+
 	return event, nil
 }
 

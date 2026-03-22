@@ -346,6 +346,49 @@ func TestTelemetryHandler_LogRedaction(t *testing.T) {
 	}
 }
 
+func TestTelemetryHandler_LogRecordIncludesFilePath(t *testing.T) {
+	proc := &recordingProcessor{}
+	lp := sdklog.NewLoggerProvider(sdklog.WithProcessor(proc))
+	defer lp.Shutdown(context.Background())
+
+	h := NewTelemetryHandler(nil, lp, nil)
+
+	event := &hooks.Event{
+		Name:    hooks.EventToolEnd,
+		RawName: "PostToolUse",
+		Dialect: "claude",
+		Data: hooks.EventData{
+			ToolName: "Write",
+			FilePath: "/workspace/src/main.go",
+			Success:  true,
+		},
+	}
+	if err := h.Handle(event); err != nil {
+		t.Fatalf("Handle error: %v", err)
+	}
+
+	records := proc.Records()
+	if len(records) != 1 {
+		t.Fatalf("expected 1 log record, got %d", len(records))
+	}
+
+	found := map[string]string{}
+	rec := &records[0]
+	rec.WalkAttributes(func(kv otellog.KeyValue) bool {
+		if kv.Value.Kind() == otellog.KindString {
+			found[kv.Key] = kv.Value.AsString()
+		}
+		return true
+	})
+
+	if found["file_path"] != "/workspace/src/main.go" {
+		t.Errorf("file_path = %q, want %q", found["file_path"], "/workspace/src/main.go")
+	}
+	if found["tool_name"] != "Write" {
+		t.Errorf("tool_name = %q, want %q", found["tool_name"], "Write")
+	}
+}
+
 func TestTelemetryHandler_LogRecordIncludesTokens(t *testing.T) {
 	proc := &recordingProcessor{}
 	lp := sdklog.NewLoggerProvider(sdklog.WithProcessor(proc))

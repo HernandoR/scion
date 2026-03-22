@@ -35,6 +35,7 @@ type EventData struct {
 	// Tool-specific fields
 	ToolInput  string `json:"tool_input,omitempty"`
 	ToolOutput string `json:"tool_output,omitempty"`
+	FilePath   string `json:"file_path,omitempty"`
 
 	// Token usage fields (populated from model-end / session-end events)
 	InputTokens  int64 `json:"input_tokens,omitempty"`

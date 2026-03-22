@@ -102,6 +102,40 @@ func extractTokens(data map[string]interface{}, ed *hooks.EventData) {
 	}
 }
 
+// extractFilePath greedily extracts a file_path value from tool_input or
+// tool_response fields when they are JSON objects (map[string]interface{}).
+// It checks tool_input.file_path first, then tool_response.filePath / file_path.
+func extractFilePath(data map[string]interface{}, ed *hooks.EventData) {
+	// Try tool_input.file_path (common in Claude Write/Edit/Read, Gemini replace/read_file)
+	if raw, ok := data["tool_input"]; ok {
+		if m, ok := raw.(map[string]interface{}); ok {
+			if fp := getString(m, "file_path"); fp != "" {
+				ed.FilePath = fp
+				return
+			}
+		}
+	}
+
+	// Try tool_response.filePath (Claude Write tool response uses camelCase)
+	if raw, ok := data["tool_response"]; ok {
+		if m, ok := raw.(map[string]interface{}); ok {
+			if fp := getString(m, "filePath"); fp != "" {
+				ed.FilePath = fp
+				return
+			}
+			if fp := getString(m, "file_path"); fp != "" {
+				ed.FilePath = fp
+				return
+			}
+		}
+	}
+
+	// Try top-level file_path (in case a harness sends it directly)
+	if fp := getString(data, "file_path"); fp != "" {
+		ed.FilePath = fp
+	}
+}
+
 // getInt64 safely extracts an int64 value from a map.
 // JSON numbers arrive as float64, so both float64 and direct integer types are handled.
 func getInt64(data map[string]interface{}, key string) int64 {
