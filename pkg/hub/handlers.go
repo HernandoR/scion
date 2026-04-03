@@ -5728,19 +5728,23 @@ func (s *Server) resolveEnvSecretAccess(w http.ResponseWriter, r *http.Request, 
 
 	case store.ScopeHub:
 		// Hub scope: only admin users can read or write.
-		// Agents and brokers retain read access for env/secret injection.
+		// Agent environment injection is handled internally via Resolve(),
+		// which filters out internal secrets. Direct API access to hub-scoped
+		// secrets requires hub admin privileges.
 		identity := GetIdentityFromContext(ctx)
 		if identity == nil {
 			Unauthorized(w)
 			return "", false
 		}
-		if userIdent, ok := identity.(UserIdentity); ok {
-			if userIdent.Role() != store.UserRoleAdmin {
-				Forbidden(w)
-				return "", false
-			}
-		} else if isWrite {
-			// Non-user identities (agents, brokers) can only read.
+		userIdent, ok := identity.(UserIdentity)
+		if !ok {
+			// Non-user identities (agents, brokers) cannot access hub-scoped
+			// secrets directly. Secret injection is handled server-side via
+			// the Resolve() path during agent dispatch.
+			Forbidden(w)
+			return "", false
+		}
+		if userIdent.Role() != store.UserRoleAdmin {
 			Forbidden(w)
 			return "", false
 		}

@@ -118,6 +118,7 @@ func (s *SQLiteStore) Migrate(ctx context.Context) error {
 		migrationV40,
 		migrationV41,
 		migrationV42,
+		migrationV43,
 	}
 
 	// Create migrations table if not exists
@@ -1062,6 +1063,17 @@ CREATE TABLE IF NOT EXISTS grove_sync_state (
 	FOREIGN KEY (grove_id) REFERENCES groves(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_grove_sync_state_grove ON grove_sync_state(grove_id);
+`
+
+// migrationV43 fixes pre-existing signing key secrets that were stored with
+// the default secret_type ('environment' or '') instead of 'internal'. Without
+// this, stale rows created before the fix would still be resolved and injected
+// into agent containers.
+const migrationV43 = `
+UPDATE secrets SET secret_type = 'internal'
+WHERE key IN ('agent_signing_key', 'user_signing_key')
+  AND scope = 'hub'
+  AND secret_type != 'internal';
 `
 
 // Helper functions for JSON marshaling/unmarshaling
