@@ -1876,8 +1876,18 @@ profiles:
 	if got := envMap["SCION_HUB_URL"]; got != "http://localhost:9810" {
 		t.Errorf("SCION_HUB_URL = %q, want %q", got, "http://localhost:9810")
 	}
-	if got := envMap["SCION_AUTH_TOKEN"]; got != "scion-dev-test-token-abc" {
-		t.Errorf("SCION_AUTH_TOKEN = %q, want %q", got, "scion-dev-test-token-abc")
+	// SCION_AUTH_TOKEN should NOT be in the container env (it's written to the token file instead)
+	if _, exists := envMap["SCION_AUTH_TOKEN"]; exists {
+		t.Error("expected SCION_AUTH_TOKEN to NOT be in container env (should be in token file)")
+	}
+
+	// Verify the token was written to the agent home token file
+	tokenData, err := os.ReadFile(filepath.Join(capturedConfig.HomeDir, ".scion", "scion-token"))
+	if err != nil {
+		t.Fatalf("failed to read token file: %v", err)
+	}
+	if got := strings.TrimSpace(string(tokenData)); got != "scion-dev-test-token-abc" {
+		t.Errorf("token file = %q, want %q", got, "scion-dev-test-token-abc")
 	}
 }
 

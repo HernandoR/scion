@@ -819,7 +819,7 @@ func TestTokenFile_WriteAndRead(t *testing.T) {
 	})
 }
 
-func TestNewClient_UsesRefreshedTokenFile(t *testing.T) {
+func TestNewClient_UsesTokenFile(t *testing.T) {
 	tmpHome := t.TempDir()
 	origHome := os.Getenv("HOME")
 	origEndpoint := os.Getenv(EnvHubEndpoint)
@@ -850,7 +850,7 @@ func TestNewClient_UsesRefreshedTokenFile(t *testing.T) {
 		client := NewClient()
 		require.NotNil(t, client)
 		assert.Equal(t, "refreshed-file-token", client.GetToken(),
-			"NewClient should use the refreshed token from file over the env var")
+			"NewClient should prefer the token file over the env var")
 	})
 }
 

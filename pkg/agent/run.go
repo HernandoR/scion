@@ -512,6 +512,29 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 		}
 	}
 
+	// Write the agent token to the canonical token file in the agent home
+	// directory so that all processes inside the container read from the file
+	// rather than relying on an environment variable that goes stale after
+	// token refresh.
+	if token, ok := opts.Env["SCION_AUTH_TOKEN"]; ok && token != "" {
+		scionDir := filepath.Join(agentHome, ".scion")
+		if err := os.MkdirAll(scionDir, 0700); err != nil {
+			util.Debugf("Start: failed to create .scion dir for token file: %v", err)
+		} else {
+			tokenPath := filepath.Join(scionDir, "scion-token")
+			tmp := tokenPath + ".tmp"
+			if err := os.WriteFile(tmp, []byte(token), 0600); err != nil {
+				util.Debugf("Start: failed to write token file: %v", err)
+			} else if err := os.Rename(tmp, tokenPath); err != nil {
+				util.Debugf("Start: failed to rename token file: %v", err)
+				os.Remove(tmp)
+			} else {
+				util.Debugf("Start: wrote agent token to %s", tokenPath)
+			}
+		}
+		delete(opts.Env, "SCION_AUTH_TOKEN")
+	}
+
 	// Resolve Docker host networking: when the hub endpoint is localhost or was
 	// translated to host.docker.internal, use --network=host so the container
 	// can reach the host's loopback interface directly. This also rewrites any

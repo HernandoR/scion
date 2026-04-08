@@ -1298,9 +1298,22 @@ func getEndpoint(settings *config.Settings) string {
 	return ""
 }
 
+// readAgentTokenFile reads the canonical agent token from ~/.scion/scion-token.
+func readAgentTokenFile() string {
+	home := os.Getenv("HOME")
+	if home == "" {
+		return ""
+	}
+	data, err := os.ReadFile(filepath.Join(home, ".scion", "scion-token"))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
 // createHubClient creates a new Hub client with proper authentication.
 // Note: hub.token and hub.apiKey are deprecated and no longer used for auth.
-// Auth priority: OAuth credentials > agent token (SCION_AUTH_TOKEN) > auto dev auth.
+// Auth priority: OAuth credentials > scion-token file > SCION_AUTH_TOKEN env > auto dev auth.
 func createHubClient(settings *config.Settings, endpoint string) (hubclient.Client, error) {
 	var opts []hubclient.Option
 
@@ -1313,9 +1326,12 @@ func createHubClient(settings *config.Settings, endpoint string) (hubclient.Clie
 		authConfigured = true
 	}
 
-	// 2. Check for agent token (running inside a hub-dispatched container)
+	// 2. Check for agent token from canonical token file, then bootstrap env var
 	if !authConfigured {
-		if token := os.Getenv("SCION_AUTH_TOKEN"); token != "" {
+		if token := readAgentTokenFile(); token != "" {
+			opts = append(opts, hubclient.WithAgentToken(token))
+			authConfigured = true
+		} else if token := os.Getenv("SCION_AUTH_TOKEN"); token != "" {
 			opts = append(opts, hubclient.WithAgentToken(token))
 			authConfigured = true
 		}

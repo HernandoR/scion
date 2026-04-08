@@ -314,9 +314,8 @@ func runInit(args []string) int {
 		cleanGcloudConfigForMetadata(filepath.Join(agentHome, ".config", "gcloud"))
 		// Wire up dynamic token retrieval so the metadata server always
 		// uses the latest agent token after refresh, not the startup value.
-		// The env var is updated by the token refresh loop (see OnRefreshed).
 		metaCfg.TokenFunc = func() string {
-			return os.Getenv(hub.EnvHubToken)
+			return hub.ReadTokenFile()
 		}
 		metadataServer = metadata.New(*metaCfg)
 		metaCtx := context.Background()
@@ -396,8 +395,8 @@ func runInit(args []string) int {
 		// Report running status to Hub if in hosted mode
 		hubClient := hub.NewClient()
 		log.Debug("Hub client check: client=%v, configured=%v", hubClient != nil, hubClient != nil && hubClient.IsConfigured())
-		log.Debug("Hub env: SCION_HUB_ENDPOINT=%q, SCION_HUB_URL=%q, SCION_AUTH_TOKEN=%v, SCION_AGENT_ID=%q",
-			os.Getenv("SCION_HUB_ENDPOINT"), os.Getenv("SCION_HUB_URL"), os.Getenv("SCION_AUTH_TOKEN") != "", os.Getenv("SCION_AGENT_ID"))
+		log.Debug("Hub env: SCION_HUB_ENDPOINT=%q, SCION_HUB_URL=%q, token_file=%v, SCION_AGENT_ID=%q",
+			os.Getenv("SCION_HUB_ENDPOINT"), os.Getenv("SCION_HUB_URL"), hub.ReadTokenFile() != "", os.Getenv("SCION_AGENT_ID"))
 		if hubClient != nil && hubClient.IsConfigured() {
 			hubCtx, hubCancel := context.WithTimeout(context.Background(), 10*time.Second)
 			startedAtStr := time.Now().UTC().Format(time.RFC3339)
@@ -433,8 +432,11 @@ func runInit(args []string) int {
 			})
 			log.Info("Started Hub heartbeat loop (interval: %s)", hub.DefaultHeartbeatInterval)
 
+			// Read the agent token from the canonical token file (written by
+			// the host-side agent manager before the container started).
+			token := hub.ReadTokenFile()
+
 			// Start token refresh loop if token has an expiry
-			token := os.Getenv(hub.EnvHubToken)
 			if tokenExpiry, err := hub.ParseTokenExpiry(token); err != nil {
 				log.Debug("Could not parse token expiry, skipping token refresh: %v", err)
 			} else {
@@ -464,8 +466,6 @@ func runInit(args []string) int {
 						RefreshAt: refreshAt,
 						OnRefreshed: func(newExpiry time.Time) {
 							log.Info("Token refreshed successfully, new expiry: %s", newExpiry.Format(time.RFC3339))
-							// Update env var for any in-process NewClient() calls (e.g. shutdown)
-							os.Setenv(hub.EnvHubToken, hubClient.GetToken())
 						},
 						OnError: func(err error) {
 							log.Error("Token refresh failed: %v", err)

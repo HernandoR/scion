@@ -34,10 +34,11 @@ import (
 )
 
 const (
-	// RefreshedTokenFile is the filename where the refreshed token is persisted.
-	// This allows child processes (hooks, status commands) to read the latest token
-	// instead of relying on the original SCION_AUTH_TOKEN environment variable.
-	RefreshedTokenFile = "scion-refreshed-token"
+	// TokenFile is the canonical token file name. The SCION_AUTH_TOKEN env var
+	// bootstraps the initial value into the container; sciontool init writes it
+	// here immediately and all consumers read from this file. Token refreshes
+	// update the same file.
+	TokenFile = "scion-token"
 )
 
 const (
@@ -149,27 +150,24 @@ type Client struct {
 
 // NewClient creates a new Hub client from environment variables.
 // Reads SCION_HUB_ENDPOINT first, falling back to SCION_HUB_URL for legacy compat.
-// If a refreshed token file exists (written by the init process after token refresh),
-// it takes precedence over the SCION_AUTH_TOKEN environment variable.
+// The token is read from the canonical token file (~/.scion/scion-token), falling
+// back to the SCION_AUTH_TOKEN env var for bootstrap (before init has run).
 // Returns nil if the required environment variables are not set.
 func NewClient() *Client {
 	hubURL := os.Getenv(EnvHubEndpoint)
 	if hubURL == "" {
 		hubURL = os.Getenv(EnvHubURL)
 	}
-	token := os.Getenv(EnvHubToken)
 	agentID := os.Getenv(EnvAgentID)
+
+	// Prefer the canonical token file; fall back to env var for bootstrap.
+	token := ReadTokenFile()
+	if token == "" {
+		token = os.Getenv(EnvHubToken)
+	}
 
 	if hubURL == "" || token == "" || agentID == "" {
 		return nil
-	}
-
-	// Check for a refreshed token file written by the init process.
-	// This is necessary because child processes (hooks, status commands)
-	// inherit the original SCION_AUTH_TOKEN env var at fork time and never
-	// see in-memory token updates from the init process's refresh loop.
-	if refreshed := ReadTokenFile(); refreshed != "" {
-		token = refreshed
 	}
 
 	return &Client{
@@ -815,21 +813,21 @@ const DefaultHeartbeatInterval = 30 * time.Second
 // DefaultHeartbeatTimeout is the default timeout for heartbeat requests.
 const DefaultHeartbeatTimeout = 10 * time.Second
 
-// tokenFilePath returns the path to the refreshed token file.
-// It uses $HOME/.scion/<RefreshedTokenFile>.
-func tokenFilePath() string {
+// TokenFilePath returns the path to the canonical token file.
+// It uses $HOME/.scion/<TokenFile>.
+func TokenFilePath() string {
 	home := os.Getenv("HOME")
 	if home == "" {
 		home = "/home/scion"
 	}
-	return filepath.Join(home, ".scion", RefreshedTokenFile)
+	return filepath.Join(home, ".scion", TokenFile)
 }
 
-// WriteTokenFile persists a refreshed token to disk so that child processes
-// (hooks, status commands) can read it. The file is written atomically via
-// a temp file + rename to avoid partial reads.
+// WriteTokenFile writes the agent token to the canonical token file.
+// Called by sciontool init to seed the initial value and by the refresh
+// loop to persist updated tokens. Written atomically via temp file + rename.
 func WriteTokenFile(token string) error {
-	path := tokenFilePath()
+	path := TokenFilePath()
 	dir := filepath.Dir(path)
 
 	if err := os.MkdirAll(dir, 0700); err != nil {
@@ -848,10 +846,10 @@ func WriteTokenFile(token string) error {
 	return nil
 }
 
-// ReadTokenFile reads a refreshed token from the token file.
+// ReadTokenFile reads the agent token from the canonical token file.
 // Returns empty string if the file doesn't exist or can't be read.
 func ReadTokenFile() string {
-	data, err := os.ReadFile(tokenFilePath())
+	data, err := os.ReadFile(TokenFilePath())
 	if err != nil {
 		return ""
 	}

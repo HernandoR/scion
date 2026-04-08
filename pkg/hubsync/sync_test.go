@@ -1237,6 +1237,8 @@ func TestCreateHubClient_UsesAgentTokenFromEnv(t *testing.T) {
 	}))
 	defer server.Close()
 
+	// Use a clean HOME so no token file interferes
+	t.Setenv("HOME", t.TempDir())
 	// Set SCION_AUTH_TOKEN env var
 	t.Setenv("SCION_AUTH_TOKEN", "test-agent-jwt")
 	// Clear any dev auth token so it doesn't interfere
@@ -1255,6 +1257,42 @@ func TestCreateHubClient_UsesAgentTokenFromEnv(t *testing.T) {
 	}
 }
 
+func TestCreateHubClient_PrefersTokenFileOverEnv(t *testing.T) {
+	// When a scion-token file exists, it should take precedence over SCION_AUTH_TOKEN env var.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		agentToken := r.Header.Get("X-Scion-Agent-Token")
+		if agentToken != "file-token-value" {
+			t.Errorf("expected X-Scion-Agent-Token 'file-token-value', got %q", agentToken)
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	}))
+	defer server.Close()
+
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+	// Write a token file
+	scionDir := filepath.Join(tmpHome, ".scion")
+	os.MkdirAll(scionDir, 0700)
+	os.WriteFile(filepath.Join(scionDir, "scion-token"), []byte("file-token-value"), 0600)
+	// Set a different value in env
+	t.Setenv("SCION_AUTH_TOKEN", "env-token-value")
+	t.Setenv("SCION_DEV_TOKEN", "")
+
+	settings := &config.Settings{}
+	client, err := createHubClient(settings, server.URL)
+	if err != nil {
+		t.Fatalf("createHubClient failed: %v", err)
+	}
+
+	_, err = client.Health(context.Background())
+	if err != nil {
+		t.Fatalf("Health check failed: %v", err)
+	}
+}
+
 func TestCreateHubClient_PrefersOAuthOverAgentToken(t *testing.T) {
 	// When OAuth credentials exist, they should take precedence over SCION_AUTH_TOKEN.
 	// We can't easily test this because credentials.GetAccessToken uses a global store,
@@ -1266,6 +1304,8 @@ func TestCreateHubClient_PrefersOAuthOverAgentToken(t *testing.T) {
 	}))
 	defer server.Close()
 
+	// Use a clean HOME so no token file interferes
+	t.Setenv("HOME", t.TempDir())
 	// With SCION_AUTH_TOKEN set but no OAuth, agent token should be used
 	t.Setenv("SCION_AUTH_TOKEN", "agent-jwt")
 	t.Setenv("SCION_DEV_TOKEN", "")
@@ -1285,6 +1325,8 @@ func TestCreateHubClient_FallsBackToDevAuth(t *testing.T) {
 	}))
 	defer server.Close()
 
+	// Use a clean HOME so no token file interferes
+	t.Setenv("HOME", t.TempDir())
 	// Clear both tokens
 	t.Setenv("SCION_AUTH_TOKEN", "")
 	t.Setenv("SCION_DEV_TOKEN", "dev-token-123")

@@ -339,6 +339,21 @@ type authInfo struct {
 	OAuthCreds *credentials.HubCredentials
 }
 
+// readAgentTokenFile reads the canonical agent token from ~/.scion/scion-token.
+// Returns empty string if the file doesn't exist (e.g. not running in a container).
+func readAgentTokenFile() string {
+	home := os.Getenv("HOME")
+	if home == "" {
+		return ""
+	}
+	data, err := os.ReadFile(filepath.Join(home, ".scion", "scion-token"))
+	if err != nil {
+		return ""
+	}
+	token := strings.TrimSpace(string(data))
+	return token
+}
+
 // getAuthInfo determines what authentication method will be used for a given endpoint.
 // Note: hub.token and hub.apiKey are deprecated and no longer checked.
 func getAuthInfo(settings *config.Settings, endpoint string) authInfo {
@@ -359,7 +374,20 @@ func getAuthInfo(settings *config.Settings, endpoint string) authInfo {
 		}
 	}
 
-	// Check for agent auth token (SCION_AUTH_TOKEN - used in hub-dispatched containers)
+	// Check for agent auth token from canonical token file or bootstrap env var
+	if token := readAgentTokenFile(); token != "" {
+		if apiclient.IsDevToken(token) {
+			info.Method = "Agent token (dev)"
+			info.MethodType = "agent_token"
+			info.Source = "scion-token file"
+			info.IsDevAuth = true
+		} else {
+			info.Method = "Agent token"
+			info.MethodType = "agent_token"
+			info.Source = "scion-token file"
+		}
+		return info
+	}
 	if token := os.Getenv("SCION_AUTH_TOKEN"); token != "" {
 		if apiclient.IsDevToken(token) {
 			info.Method = "Agent token (dev)"
@@ -408,7 +436,7 @@ func getHubClient(settings *config.Settings) (hubclient.Client, error) {
 
 	// Add authentication - check in priority order.
 	// Note: hub.token and hub.apiKey are deprecated and no longer used for auth.
-	// Auth priority: OAuth credentials > SCION_AUTH_TOKEN env > SCION_HUB_TOKEN env > auto dev auth.
+	// Auth priority: OAuth credentials > scion-token file > SCION_AUTH_TOKEN env > SCION_HUB_TOKEN env > auto dev auth.
 	authConfigured := false
 
 	// Check for OAuth credentials from scion hub auth login
@@ -417,9 +445,12 @@ func getHubClient(settings *config.Settings) (hubclient.Client, error) {
 		authConfigured = true
 	}
 
-	// Check for agent auth token (running inside a hub-dispatched container)
+	// Check for agent auth token from canonical token file, then bootstrap env var
 	if !authConfigured {
-		if token := os.Getenv("SCION_AUTH_TOKEN"); token != "" {
+		if token := readAgentTokenFile(); token != "" {
+			opts = append(opts, hubclient.WithAgentToken(token))
+			authConfigured = true
+		} else if token := os.Getenv("SCION_AUTH_TOKEN"); token != "" {
 			opts = append(opts, hubclient.WithAgentToken(token))
 			authConfigured = true
 		}
