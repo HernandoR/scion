@@ -30,6 +30,15 @@ import type {
   Template,
   GCPServiceAccount,
 } from '../../shared/types.js';
+
+interface HarnessConfigEntry {
+  id: string;
+  name: string;
+  slug: string;
+  displayName?: string;
+  harness: string;
+  scope: string;
+}
 import { isSharedWorkspace } from '../../shared/types.js';
 import { apiFetch, parseApiError } from '../../client/api.js';
 import '../shared/status-badge.js';
@@ -102,6 +111,9 @@ export class ScionPageAgentCreate extends LitElement {
 
   @state()
   private gcpServiceAccounts: GCPServiceAccount[] = [];
+
+  @state()
+  private harnessConfigs: HarnessConfigEntry[] = [];
 
   /** ID of an existing agent we're editing (came back from configure page) */
   private editingAgentId: string | null = null;
@@ -364,12 +376,14 @@ export class ScionPageAgentCreate extends LitElement {
     this.error = null;
 
     try {
-      const [grovesRes, brokersRes, templatesRes, settingsRes] = await Promise.all([
-        fetch('/api/v1/groves', { credentials: 'include' }),
-        fetch('/api/v1/runtime-brokers', { credentials: 'include' }),
-        fetch('/api/v1/templates?status=active', { credentials: 'include' }),
-        fetch('/api/v1/settings/public', { credentials: 'include' }),
-      ]);
+      const [grovesRes, brokersRes, templatesRes, settingsRes, harnessConfigsRes] =
+        await Promise.all([
+          fetch('/api/v1/groves', { credentials: 'include' }),
+          fetch('/api/v1/runtime-brokers', { credentials: 'include' }),
+          fetch('/api/v1/templates?status=active', { credentials: 'include' }),
+          fetch('/api/v1/settings/public', { credentials: 'include' }),
+          fetch('/api/v1/harness-configs?status=active&limit=100', { credentials: 'include' }),
+        ]);
 
       if (grovesRes.ok) {
         const data = (await grovesRes.json()) as { groves?: Grove[] } | Grove[];
@@ -389,6 +403,13 @@ export class ScionPageAgentCreate extends LitElement {
       if (settingsRes.ok) {
         const data = (await settingsRes.json()) as { telemetryEnabled?: boolean };
         this.telemetryEnabled = data.telemetryEnabled ?? false;
+      }
+
+      if (harnessConfigsRes.ok) {
+        const data = (await harnessConfigsRes.json()) as {
+          harnessConfigs?: HarnessConfigEntry[];
+        };
+        this.harnessConfigs = data.harnessConfigs || [];
       }
 
       // If returning from configure page, populate form from existing agent
@@ -790,6 +811,21 @@ export class ScionPageAgentCreate extends LitElement {
     }
   }
 
+  private async loadHarnessConfigs(): Promise<void> {
+    try {
+      const url = this.groveId
+        ? `/api/v1/harness-configs?status=active&groveId=${encodeURIComponent(this.groveId)}&limit=100`
+        : '/api/v1/harness-configs?status=active&limit=100';
+      const res = await apiFetch(url);
+      if (res.ok) {
+        const data = (await res.json()) as { harnessConfigs?: HarnessConfigEntry[] };
+        this.harnessConfigs = data.harnessConfigs || [];
+      }
+    } catch (err) {
+      console.error('Failed to load harness configs:', err);
+    }
+  }
+
   private async loadGCPServiceAccounts(): Promise<void> {
     this.gcpServiceAccounts = [];
     this.gcpServiceAccountId = '';
@@ -981,6 +1017,7 @@ export class ScionPageAgentCreate extends LitElement {
                 this.groveId = (e.target as HTMLElement & { value: string }).value;
                 this.selectBrokerForGrove();
                 void this.selectDefaultTemplate();
+                void this.loadHarnessConfigs();
                 void this.loadGCPServiceAccounts();
                 // Clear branch if new grove is not git-based
                 if (!this.selectedGrove?.gitRemote) {
@@ -1024,10 +1061,21 @@ export class ScionPageAgentCreate extends LitElement {
                 this.harness = (e.target as HTMLElement & { value: string }).value;
               }}
             >
-              <sl-option value="gemini">Gemini</sl-option>
-              <sl-option value="claude">Claude</sl-option>
-              <sl-option value="opencode">OpenCode</sl-option>
-              <sl-option value="codex">Codex</sl-option>
+              ${this.harnessConfigs.length > 0
+                ? this.harnessConfigs.map(
+                    (hc) => html`
+                      <sl-option value=${hc.name}>
+                        ${hc.displayName || hc.name}
+                        ${hc.harness ? html` <small>(${hc.harness})</small>` : ''}
+                      </sl-option>
+                    `
+                  )
+                : html`
+                    <sl-option value="gemini">Gemini</sl-option>
+                    <sl-option value="claude">Claude</sl-option>
+                    <sl-option value="opencode">OpenCode</sl-option>
+                    <sl-option value="codex">Codex</sl-option>
+                  `}
             </sl-select>
             <div class="hint">The LLM harness configuration to use.</div>
           </div>
