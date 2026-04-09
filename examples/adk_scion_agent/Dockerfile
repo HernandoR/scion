@@ -36,10 +36,11 @@ USER root
 RUN mkdir -p /workspace && chown scion:scion /workspace
 WORKDIR /workspace
 
-# Install google-adk into a virtualenv so we get a clean pip environment
-# without conflicting with system packages.
+# Install Python dependencies into a virtualenv so we get a clean pip
+# environment without conflicting with system packages.
+COPY requirements.txt /tmp/requirements.txt
 RUN python3 -m venv /opt/adk-venv && \
-    /opt/adk-venv/bin/pip install --no-cache-dir google-adk
+    /opt/adk-venv/bin/pip install --no-cache-dir -r /tmp/requirements.txt
 
 # Put the venv on PATH so `adk` CLI is available to all users.
 ENV PATH="/opt/adk-venv/bin:${PATH}"

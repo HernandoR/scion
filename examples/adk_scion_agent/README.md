@@ -5,7 +5,7 @@ An example [ADK (Agent Development Kit)](https://google.github.io/adk-docs/) age
 ## Prerequisites
 
 - Python 3.11+
-- `google-adk` package (`pip install google-adk`)
+- `google-adk>=1.28.0` (see `requirements.txt`; install with `pip install -r requirements.txt`)
 - A Google AI API key or Vertex AI credentials
 
 ## Quick Start (Standalone)
@@ -23,7 +23,7 @@ python -m adk_scion_agent
 python -m adk_scion_agent --input "write a hello world script"
 ```
 
-The agent starts an interactive session. Type a task and the agent will work through it, using `file_write` to create files and `sciontool_status` to signal lifecycle events. The `--input` flag sends an initial message before entering the interactive loop.
+The agent starts an interactive session. Type a task and the agent will work through it, using ADK's environment tools (ReadFile, WriteFile, EditFile, Execute) to interact with the workspace and `sciontool_status` to signal lifecycle events. The `--input` flag sends an initial message before entering the interactive loop.
 
 When running outside a scion container, `sciontool` won't be on PATH — the agent works normally but status reporting is silently skipped.
 
@@ -71,7 +71,7 @@ User sends message
     ▼
 thinking          ← before_agent_callback
     │
-    ├──► executing    ← before_tool_callback (file_write, etc.)
+    ├──► executing    ← before_tool_callback (WriteFile, Execute, etc.)
     │        │
     │        ▼
     │    thinking     ← after_tool_callback
@@ -99,10 +99,13 @@ For Vertex AI, set `GOOGLE_GENAI_USE_VERTEXAI=true` and configure Application De
 
 ## Tools
 
-| Tool | Purpose |
-|---|---|
-| `file_write(file_path, content)` | Write a file to the workspace. Paths are resolved relative to `/workspace` (or CWD). Enforces workspace boundary. |
-| `sciontool_status(status_type, message)` | Signal `ask_user`, `blocked`, `task_completed`, or `limits_exceeded` to scion. |
+| Tool | Source | Purpose |
+|---|---|---|
+| `ReadFile` | EnvironmentToolset | Read file contents from the workspace. |
+| `WriteFile` | EnvironmentToolset | Create or overwrite a file in the workspace. |
+| `EditFile` | EnvironmentToolset | Make surgical text replacements in an existing file. |
+| `Execute` | EnvironmentToolset | Run shell commands in the workspace directory. |
+| `sciontool_status(status_type, message)` | Custom | Signal `ask_user`, `blocked`, `task_completed`, or `limits_exceeded` to scion. |
 
 ## Project Structure
 
@@ -112,8 +115,9 @@ adk_scion_agent/
 ├── __init__.py        # ADK package entry point (exports root_agent)
 ├── __main__.py        # python -m adk_scion_agent entrypoint
 ├── run.py             # Custom runner with --input flag support
+├── requirements.txt   # Python dependencies (google-adk>=1.28.0)
 ├── agent.py           # root_agent definition, auth bridging, model config
-├── tools.py           # file_write and sciontool_status tools
+├── tools.py           # sciontool_status tool
 ├── callbacks.py       # ADK callbacks → scion activity updates
 ├── sciontool.py       # Low-level sciontool subprocess wrapper
 ├── .env.example       # Environment variable template

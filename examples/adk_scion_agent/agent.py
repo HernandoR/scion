@@ -16,15 +16,19 @@
 
 This module defines an ADK LlmAgent that integrates with scion's lifecycle
 management. It bridges auth environment variables, wires up status-reporting
-callbacks, and exposes file_write and sciontool_status as callable tools.
+callbacks, and exposes an EnvironmentToolset (for filesystem and shell access)
+plus sciontool_status as callable tools.
 
 When run with `adk run`, the agent operates as an interactive coding assistant
 that reports its status to scion throughout its lifecycle.
 """
 
 import os
+from pathlib import Path
 
 from google.adk import Agent
+from google.adk.environment import LocalEnvironment
+from google.adk.tools.environment import EnvironmentToolset
 
 from . import callbacks, tools
 
@@ -42,18 +46,33 @@ if not os.environ.get("GOOGLE_API_KEY") and os.environ.get("GEMINI_API_KEY"):
 MODEL = os.environ.get("ADK_MODEL", "gemini-2.5-flash")
 
 # ---------------------------------------------------------------------------
+# Workspace configuration
+# ---------------------------------------------------------------------------
+# /workspace inside scion containers, otherwise CWD.
+_WORKSPACE_DIR = Path(os.environ.get("WORKSPACE_ROOT", "/workspace"))
+if not _WORKSPACE_DIR.exists():
+    _WORKSPACE_DIR = Path.cwd()
+
+# ---------------------------------------------------------------------------
 # Agent instruction
 # ---------------------------------------------------------------------------
 AGENT_INSTRUCTION = """\
 You are a coding assistant running inside a scion-managed container.
 
 Your workspace is mounted at /workspace (or the current working directory if
-running outside a container). You can read, create, and modify files there.
+running outside a container). You can read, create, and modify files there
+using the environment tools (ReadFile, WriteFile, EditFile, Execute).
 
 ## Available tools
 
-- **file_write(file_path, content)**: Create or overwrite a file in the
-  workspace. Paths are relative to the workspace root unless absolute.
+### Environment tools (provided by EnvironmentToolset)
+
+- **ReadFile**: Read file contents from the workspace.
+- **WriteFile**: Create or overwrite a file in the workspace.
+- **EditFile**: Make surgical text replacements in an existing file.
+- **Execute**: Run shell commands in the workspace directory.
+
+### Scion lifecycle
 
 - **sciontool_status(status_type, message)**: Signal lifecycle events to scion.
   - `"ask_user"` — call **before** you ask the user a question. This lets
@@ -67,7 +86,7 @@ running outside a container). You can read, create, and modify files there.
 ## Workflow
 
 1. When you receive a task, work through it step by step.
-2. Use file_write to create or modify files as needed.
+2. Use the environment tools to read, create, and modify files as needed.
 3. If you need clarification, call sciontool_status("ask_user", ...) first,
    then ask your question.
 4. If you are waiting on an external dependency, call
@@ -83,7 +102,12 @@ root_agent = Agent(
     model=MODEL,
     name="scion_agent",
     instruction=AGENT_INSTRUCTION,
-    tools=[tools.file_write, tools.sciontool_status],
+    tools=[
+        EnvironmentToolset(
+            environment=LocalEnvironment(working_dir=_WORKSPACE_DIR),
+        ),
+        tools.sciontool_status,
+    ],
     before_agent_callback=callbacks.before_agent_callback,
     before_tool_callback=callbacks.before_tool_callback,
     after_tool_callback=callbacks.after_tool_callback,
