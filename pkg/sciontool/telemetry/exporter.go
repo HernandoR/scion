@@ -7,6 +7,8 @@ package telemetry
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
+	"errors"
 	"fmt"
 	"os"
 
@@ -21,10 +23,29 @@ import (
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/credentials/oauth"
 )
+
+var errOTLPCACertsNotFound = errors.New("parsing OTLP CA file: no certificates found")
+
+func loadOTLPTLSConfig(caFile string) (*tls.Config, error) {
+	tlsConfig := &tls.Config{}
+	if caFile == "" {
+		return tlsConfig, nil
+	}
+
+	pemBytes, err := os.ReadFile(caFile)
+	if err != nil {
+		return nil, fmt.Errorf("reading OTLP CA file: %w", err)
+	}
+
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM(pemBytes) {
+		return nil, errOTLPCACertsNotFound
+	}
+	tlsConfig.RootCAs = roots
+	return tlsConfig, nil
+}
 
 // loadGCPDialOptions loads GCP credentials from a service account key file
 // and returns gRPC dial options for per-RPC authentication. Returns (nil, nil)
@@ -71,7 +92,7 @@ type CloudExporter struct {
 // NewCloudExporter creates a new cloud exporter.
 // When provider=gcp, uses GCP-native APIs (Cloud Trace, Cloud Logging).
 // Otherwise, uses standard OTLP gRPC/HTTP forwarding.
-func NewCloudExporter(config *Config) (*CloudExporter, error) {
+func NewCloudExporter(ctx context.Context, config *Config) (*CloudExporter, error) {
 	if !config.IsCloudConfigured() {
 		return nil, nil
 	}
@@ -95,9 +116,9 @@ func NewCloudExporter(config *Config) (*CloudExporter, error) {
 	var err error
 	switch config.Protocol {
 	case "http":
-		err = exporter.initHTTP(config)
+		err = exporter.initHTTP(ctx, config)
 	default:
-		err = exporter.initGRPC(config)
+		err = exporter.initGRPC(ctx, config)
 	}
 
 	if err != nil {
@@ -108,25 +129,18 @@ func NewCloudExporter(config *Config) (*CloudExporter, error) {
 }
 
 // initGRPC initializes the generic OTLP gRPC exporter.
-func (e *CloudExporter) initGRPC(config *Config) error {
-	ctx := context.Background()
-
-	// Load GCP dial options if credentials are configured and TLS is enabled
-	var gcpDialOpts []grpc.DialOption
-	if config.GCPCredentialsFile != "" && !config.Insecure {
-		var err error
-		gcpDialOpts, err = loadGCPDialOptions(ctx, config.GCPCredentialsFile)
-		if err != nil {
-			return fmt.Errorf("failed to load GCP credentials: %w", err)
-		}
+func (e *CloudExporter) initGRPC(ctx context.Context, config *Config) error {
+	gcpDialOpts, err := loadSecureGCPDialOptions(ctx, config)
+	if err != nil {
+		return err
 	}
 
 	opts := []otlptracegrpc.Option{
 		otlptracegrpc.WithEndpoint(config.Endpoint),
 	}
-
-	if config.Insecure {
-		opts = append(opts, otlptracegrpc.WithInsecure())
+	opts, err = appendOTLPTraceGRPCSecurityOption(opts, config)
+	if err != nil {
+		return err
 	}
 
 	for _, do := range gcpDialOpts {
@@ -141,12 +155,11 @@ func (e *CloudExporter) initGRPC(config *Config) error {
 	e.traceExporter = traceExp
 
 	// Also create a raw gRPC client for proto forwarding
-	connOpts := []grpc.DialOption{}
-	if config.Insecure {
-		connOpts = append(connOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	} else {
-		connOpts = append(connOpts, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{})))
+	transportCreds, err := otlpGRPCTransportCredentials(config)
+	if err != nil {
+		return err
 	}
+	connOpts := []grpc.DialOption{transportCreds}
 	connOpts = append(connOpts, gcpDialOpts...)
 
 	conn, err := grpc.NewClient(config.Endpoint, connOpts...)
@@ -164,16 +177,16 @@ func (e *CloudExporter) initGRPC(config *Config) error {
 }
 
 // initHTTP initializes the generic OTLP HTTP exporter.
-func (e *CloudExporter) initHTTP(config *Config) error {
+func (e *CloudExporter) initHTTP(ctx context.Context, config *Config) error {
 	opts := []otlptracehttp.Option{
 		otlptracehttp.WithEndpoint(config.Endpoint),
 	}
-
-	if config.Insecure {
-		opts = append(opts, otlptracehttp.WithInsecure())
+	opts, err := appendOTLPTraceHTTPSecurityOption(opts, config)
+	if err != nil {
+		return err
 	}
 
-	traceExp, err := otlptracehttp.New(context.Background(), opts...)
+	traceExp, err := otlptracehttp.New(ctx, opts...)
 	if err != nil {
 		return fmt.Errorf("failed to create HTTP trace exporter: %w", err)
 	}

@@ -21,7 +21,6 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 	"google.golang.org/api/option"
-	"google.golang.org/grpc"
 )
 
 // Providers holds SDK TracerProvider, LoggerProvider, and MeterProvider for OTel export.
@@ -146,22 +145,18 @@ func newGCPProviders(ctx context.Context, config *Config, res *resource.Resource
 
 // newOTLPProviders creates providers using standard OTLP gRPC exporters.
 func newOTLPProviders(ctx context.Context, config *Config, res *resource.Resource, batch bool) (*Providers, error) {
-	// Load GCP dial options if credentials are configured
-	var gcpDialOpts []grpc.DialOption
-	if config.GCPCredentialsFile != "" && !config.Insecure {
-		var err error
-		gcpDialOpts, err = loadGCPDialOptions(ctx, config.GCPCredentialsFile)
-		if err != nil {
-			return nil, fmt.Errorf("loading GCP credentials: %w", err)
-		}
+	gcpDialOpts, err := loadSecureGCPDialOptions(ctx, config)
+	if err != nil {
+		return nil, fmt.Errorf("loading GCP credentials: %w", err)
 	}
 
 	// Create trace exporter (gRPC)
 	traceOpts := []otlptracegrpc.Option{
 		otlptracegrpc.WithEndpoint(config.Endpoint),
 	}
-	if config.Insecure {
-		traceOpts = append(traceOpts, otlptracegrpc.WithInsecure())
+	traceOpts, err = appendOTLPTraceGRPCSecurityOption(traceOpts, config)
+	if err != nil {
+		return nil, fmt.Errorf("loading OTLP TLS config: %w", err)
 	}
 	for _, do := range gcpDialOpts {
 		traceOpts = append(traceOpts, otlptracegrpc.WithDialOption(do))
@@ -175,8 +170,10 @@ func newOTLPProviders(ctx context.Context, config *Config, res *resource.Resourc
 	logOpts := []otlploggrpc.Option{
 		otlploggrpc.WithEndpoint(config.Endpoint),
 	}
-	if config.Insecure {
-		logOpts = append(logOpts, otlploggrpc.WithInsecure())
+	logOpts, err = appendOTLPLogGRPCSecurityOption(logOpts, config)
+	if err != nil {
+		_ = traceExporter.Shutdown(ctx)
+		return nil, fmt.Errorf("loading OTLP TLS config: %w", err)
 	}
 	for _, do := range gcpDialOpts {
 		logOpts = append(logOpts, otlploggrpc.WithDialOption(do))
@@ -191,8 +188,11 @@ func newOTLPProviders(ctx context.Context, config *Config, res *resource.Resourc
 	metricOpts := []otlpmetricgrpc.Option{
 		otlpmetricgrpc.WithEndpoint(config.Endpoint),
 	}
-	if config.Insecure {
-		metricOpts = append(metricOpts, otlpmetricgrpc.WithInsecure())
+	metricOpts, err = appendOTLPMetricGRPCSecurityOption(metricOpts, config)
+	if err != nil {
+		_ = traceExporter.Shutdown(ctx)
+		_ = logExporter.Shutdown(ctx)
+		return nil, fmt.Errorf("loading OTLP TLS config: %w", err)
 	}
 	for _, do := range gcpDialOpts {
 		metricOpts = append(metricOpts, otlpmetricgrpc.WithDialOption(do))
@@ -214,42 +214,36 @@ func newOTLPProviders(ctx context.Context, config *Config, res *resource.Resourc
 // buildProviders constructs TracerProvider, LoggerProvider, and MeterProvider
 // from the given exporters, using either batch or sync processing.
 func buildProviders(res *resource.Resource, traceExp trace.SpanExporter, logExp log.Exporter, metricExp metric.Exporter, batch bool) *Providers {
-	var tp *trace.TracerProvider
-	var lp *log.LoggerProvider
-	var mp *metric.MeterProvider
-
-	if batch {
-		tp = trace.NewTracerProvider(
-			trace.WithResource(res),
-			trace.WithBatcher(traceExp),
-		)
-		lp = log.NewLoggerProvider(
-			log.WithResource(res),
-			log.WithProcessor(log.NewBatchProcessor(logExp)),
-		)
-		mp = metric.NewMeterProvider(
-			metric.WithResource(res),
-			metric.WithReader(metric.NewPeriodicReader(metricExp)),
-		)
-	} else {
-		tp = trace.NewTracerProvider(
-			trace.WithResource(res),
-			trace.WithSyncer(traceExp),
-		)
-		lp = log.NewLoggerProvider(
-			log.WithResource(res),
-			log.WithProcessor(log.NewSimpleProcessor(logExp)),
-		)
-		mp = metric.NewMeterProvider(
-			metric.WithResource(res),
-			metric.WithReader(metric.NewPeriodicReader(metricExp)),
-		)
+	if !batch {
+		return &Providers{
+			TracerProvider: trace.NewTracerProvider(
+				trace.WithResource(res),
+				trace.WithSyncer(traceExp),
+			),
+			LoggerProvider: log.NewLoggerProvider(
+				log.WithResource(res),
+				log.WithProcessor(log.NewSimpleProcessor(logExp)),
+			),
+			MeterProvider: metric.NewMeterProvider(
+				metric.WithResource(res),
+				metric.WithReader(metric.NewPeriodicReader(metricExp)),
+			),
+		}
 	}
 
 	return &Providers{
-		TracerProvider: tp,
-		LoggerProvider: lp,
-		MeterProvider:  mp,
+		TracerProvider: trace.NewTracerProvider(
+			trace.WithResource(res),
+			trace.WithBatcher(traceExp),
+		),
+		LoggerProvider: log.NewLoggerProvider(
+			log.WithResource(res),
+			log.WithProcessor(log.NewBatchProcessor(logExp)),
+		),
+		MeterProvider: metric.NewMeterProvider(
+			metric.WithResource(res),
+			metric.WithReader(metric.NewPeriodicReader(metricExp)),
+		),
 	}
 }
 
