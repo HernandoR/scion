@@ -16,7 +16,6 @@ package cmd
 
 import (
 	"os"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -28,69 +27,51 @@ func TestBuildLookCmd(t *testing.T) {
 		plain    bool
 		full     bool
 		numLines int
-		wantArgs string
+		want     []string
 	}{
 		{
-			name:     "default flags",
-			plain:    false,
-			full:     false,
-			numLines: 0,
-			wantArgs: "capture-pane -pe -t scion",
+			name: "default flags",
+			want: []string{"tmux", "capture-pane", "-pe", "-t", "scion"},
 		},
 		{
-			name:     "plain only",
-			plain:    true,
-			full:     false,
-			numLines: 0,
-			wantArgs: "capture-pane -p -t scion",
+			name:  "plain only",
+			plain: true,
+			want:  []string{"tmux", "capture-pane", "-p", "-t", "scion"},
 		},
 		{
-			name:     "full only",
-			plain:    false,
-			full:     true,
-			numLines: 0,
-			wantArgs: "capture-pane -peS - -t scion",
+			name: "full only",
+			full: true,
+			want: []string{"tmux", "capture-pane", "-peS", "-", "-t", "scion"},
 		},
 		{
-			name:     "plain and full",
-			plain:    true,
-			full:     true,
-			numLines: 0,
-			wantArgs: "capture-pane -pS - -t scion",
+			name:  "plain and full",
+			plain: true,
+			full:  true,
+			want:  []string{"tmux", "capture-pane", "-pS", "-", "-t", "scion"},
 		},
 		{
 			name:     "num-lines",
-			plain:    false,
-			full:     false,
 			numLines: 75,
-			wantArgs: "capture-pane -peS -75 -t scion",
+			want:     []string{"tmux", "capture-pane", "-peS", "-75", "-t", "scion"},
 		},
 		{
 			name:     "num-lines with plain",
 			plain:    true,
-			full:     false,
 			numLines: 100,
-			wantArgs: "capture-pane -pS -100 -t scion",
+			want:     []string{"tmux", "capture-pane", "-pS", "-100", "-t", "scion"},
 		},
 		{
 			name:     "num-lines overrides full",
-			plain:    false,
 			full:     true,
 			numLines: 50,
-			wantArgs: "capture-pane -peS -50 -t scion",
+			want:     []string{"tmux", "capture-pane", "-peS", "-50", "-t", "scion"},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cmd := buildLookCmd(tt.plain, tt.full, tt.numLines)
-
-			assert.Equal(t, "/bin/sh", cmd[0])
-			assert.Equal(t, "-c", cmd[1])
-			assert.True(t, strings.Contains(cmd[2], tt.wantArgs),
-				"expected shell command to contain %q, got %q", tt.wantArgs, cmd[2])
-			assert.True(t, strings.Contains(cmd[2], `find /tmp -name "default" -type s`),
-				"expected shell command to contain tmux socket discovery")
+			assert.Equal(t, tt.want, cmd)
 		})
 	}
 }

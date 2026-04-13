@@ -33,23 +33,23 @@ var (
 	lookNumLines int
 )
 
-// buildLookCmd builds the shell command for tmux capture-pane based on flags.
+// buildLookCmd builds the command for tmux capture-pane based on flags.
 func buildLookCmd(plain, full bool, numLines int) []string {
-	captureArgs := "-p"
+	flags := "-p"
 	if !plain {
-		captureArgs += "e"
-	}
-	if numLines > 0 {
-		captureArgs += fmt.Sprintf("S -%d", numLines)
-	} else if full {
-		captureArgs += "S -"
+		flags += "e"
 	}
 
-	shellCmd := fmt.Sprintf(
-		`tmux -S $(find /tmp -name "default" -type s | head -n 1) capture-pane %s -t scion`,
-		captureArgs,
-	)
-	return []string{"/bin/sh", "-c", shellCmd}
+	args := []string{"tmux", "capture-pane"}
+	if numLines > 0 {
+		args = append(args, flags+"S", fmt.Sprintf("-%d", numLines))
+	} else if full {
+		args = append(args, flags+"S", "-")
+	} else {
+		args = append(args, flags)
+	}
+	args = append(args, "-t", "scion")
+	return args
 }
 
 // lookCmd represents the look command
