@@ -243,17 +243,12 @@ func ProvisionAgent(ctx context.Context, agentName string, templateName string, 
 
 	groveName := config.GetGroveName(projectDir)
 	isGit := util.IsGitRepoDir(projectDir)
-	if isGit {
-		// Extra safety: verify we're in a real repo root, not a worktree.
-		// A worktree has a .git FILE (not directory) containing a gitdir pointer.
-		// Treat worktrees as non-git for provisioning to prevent nested worktree creation.
-		root, err := util.RepoRootDir(projectDir)
-		if err == nil {
-			gitPath := filepath.Join(root, ".git")
-			if info, statErr := os.Stat(gitPath); statErr == nil && !info.IsDir() {
-				isGit = false
-			}
-		}
+	if isGit && os.Getenv("SCION_HOST_UID") != "" {
+		// Inside an agent container: treat as non-git to prevent worktree
+		// creation. Container worktrees produce path-identity mismatches
+		// because --relative-paths are computed against the container mount
+		// layout, not the host filesystem.
+		isGit = false
 	}
 
 	// Verify .gitignore if in a repo

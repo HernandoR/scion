@@ -53,6 +53,9 @@ func setupGitRepo(t *testing.T) string {
 }
 
 func TestGitUtils(t *testing.T) {
+	// Clear container context so worktree tests can create worktrees
+	t.Setenv("SCION_HOST_UID", "")
+
 	// Need to be inside the repo for most tests
 	repoDir := setupGitRepo(t)
 
@@ -302,8 +305,14 @@ func TestGitUtils(t *testing.T) {
 	})
 }
 
-func TestCreateWorktree_RejectsNestedWorktree(t *testing.T) {
-	// Create a repo, then a worktree of it
+func TestCreateWorktree_FromWorktreeSucceeds(t *testing.T) {
+	// Clear container context so worktree creation is allowed
+	t.Setenv("SCION_HOST_UID", "")
+
+	// Creating a worktree from within an existing worktree is a legitimate
+	// operation (git supports it natively via the common git dir). This test
+	// verifies that CreateWorktree resolves the main repo root correctly and
+	// creates the sibling worktree.
 	mainRepo := setupGitRepo(t)
 
 	originalWd, err := os.Getwd()
@@ -315,24 +324,42 @@ func TestCreateWorktree_RejectsNestedWorktree(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Create worktree inside the repo dir so RepoRootDir can find the parent repo
+	// Create a worktree from the main repo
 	wtPath := filepath.Join(mainRepo, "child-wt")
 	if err := CreateWorktree(wtPath, "child-branch"); err != nil {
 		t.Fatalf("failed to create initial worktree: %v", err)
 	}
 
-	// Attempt to create a worktree inside the worktree — should fail
-	nestedPath := filepath.Join(wtPath, "nested-wt")
-	err = CreateWorktree(nestedPath, "nested-branch")
-	if err == nil {
-		t.Fatal("expected error creating worktree inside a worktree")
+	// Change into the worktree and create another worktree from there.
+	// This should succeed — the new worktree is a peer managed by the main repo.
+	if err := os.Chdir(wtPath); err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(err.Error(), "nested worktrees are not supported") {
-		t.Errorf("unexpected error: %v", err)
+	siblingPath := filepath.Join(mainRepo, "sibling-wt")
+	if err := CreateWorktree(siblingPath, "sibling-branch"); err != nil {
+		t.Fatalf("expected worktree creation from within a worktree to succeed, got: %v", err)
 	}
 
 	// Clean up
+	_, _ = RemoveWorktree(siblingPath, true)
 	_, _ = RemoveWorktree(wtPath, true)
+}
+
+func TestCreateWorktree_RejectsInsideContainer(t *testing.T) {
+	// When SCION_HOST_UID is set (agent container), worktree creation should
+	// be refused to prevent path-identity mismatches from container mounts.
+	t.Setenv("SCION_HOST_UID", "1000")
+
+	mainRepo := setupGitRepo(t)
+
+	wtPath := filepath.Join(mainRepo, "container-wt")
+	err := CreateWorktree(wtPath, "container-branch")
+	if err == nil {
+		t.Fatal("expected error creating worktree inside container context")
+	}
+	if !strings.Contains(err.Error(), "SCION_HOST_UID") {
+		t.Errorf("unexpected error: %v", err)
+	}
 }
 
 func TestIsGitURL(t *testing.T) {

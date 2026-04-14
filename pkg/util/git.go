@@ -164,17 +164,24 @@ func IsIgnored(dir, path string) bool {
 
 // CreateWorktree creates a new git worktree at the specified path with a new branch.
 func CreateWorktree(path, branch string) error {
-	root, err := RepoRootDir(filepath.Dir(path))
-	if err != nil {
-		return fmt.Errorf("failed to find repo root for worktree: %w", err)
+	// Guard: refuse to create worktrees inside an agent container.
+	// SCION_HOST_UID is set by the runtime when launching containers.
+	// Creating worktrees inside containers produces path-identity mismatches
+	// because --relative-paths are computed against the container mount layout,
+	// not the host filesystem.
+	if os.Getenv("SCION_HOST_UID") != "" {
+		return fmt.Errorf("cannot create worktree: running inside an agent container (SCION_HOST_UID is set)")
 	}
 
-	// Guard: refuse to create worktrees inside a worktree.
-	// A worktree has a .git FILE (not directory) containing a gitdir pointer.
-	gitPath := filepath.Join(root, ".git")
-	if info, err := os.Stat(gitPath); err == nil && !info.IsDir() {
-		return fmt.Errorf("cannot create worktree: %s is itself a worktree (nested worktrees are not supported)", root)
+	// Resolve the main repository root via the common git dir. This is correct
+	// even when called from within a worktree: GetCommonGitDir returns the
+	// shared .git directory of the main repo, whose parent is the true root.
+	dir := filepath.Dir(path)
+	commonDir, err := GetCommonGitDir(dir)
+	if err != nil {
+		return fmt.Errorf("failed to find git common dir for worktree: %w", err)
 	}
+	root := filepath.Dir(commonDir)
 
 	// git worktree add --relative-paths -b <branch> <path>
 	// We run from root to ensure --relative-paths are calculated from root

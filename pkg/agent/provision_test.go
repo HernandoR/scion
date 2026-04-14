@@ -1232,6 +1232,7 @@ func TestProvisionAgent_SharedWorkspaceNoCredentialWithoutFlag(t *testing.T) {
 // managed workspace directory has been removed (e.g., by git worktree prune),
 // GetAgent recreates the worktree instead of returning an empty workspace path.
 func TestGetAgent_RecreatesMissingWorktree(t *testing.T) {
+	t.Setenv("SCION_HOST_UID", "") // Clear container context for worktree ops
 	tmpDir := t.TempDir()
 
 	oldWd, _ := os.Getwd()
@@ -1334,6 +1335,7 @@ func TestGetAgent_RecreatesMissingWorktree(t *testing.T) {
 // the stale directory check, so GetAgent would create a worktree then
 // immediately delete it along with the stale agent directory.
 func TestGetAgent_StaleDirectoryCreatesWorkspace(t *testing.T) {
+	t.Setenv("SCION_HOST_UID", "") // Clear container context for worktree ops
 	tmpDir := t.TempDir()
 
 	oldWd, _ := os.Getwd()
@@ -1414,6 +1416,7 @@ func TestGetAgent_StaleDirectoryCreatesWorkspace(t *testing.T) {
 // new agents — creating the worktree prematurely, which then caused the stale
 // directory check or ProvisionAgent to fail.
 func TestGetAgent_BrandNewAgentCreatesWorkspace(t *testing.T) {
+	t.Setenv("SCION_HOST_UID", "") // Clear container context for worktree ops
 	tmpDir := t.TempDir()
 
 	oldWd, _ := os.Getwd()

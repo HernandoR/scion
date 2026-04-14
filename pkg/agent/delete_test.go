@@ -51,6 +51,7 @@ func listWorktrees(t *testing.T, repoDir string) string {
 }
 
 func TestDeleteAgentFiles_CleansStaleWorktree(t *testing.T) {
+	t.Setenv("SCION_HOST_UID", "") // Clear container context for worktree ops
 	tmpDir := t.TempDir()
 
 	// Set CWD and HOME to tmpDir so config resolution works
@@ -122,6 +123,7 @@ func TestDeleteAgentFiles_CleansStaleWorktree(t *testing.T) {
 }
 
 func TestDeleteAgentFiles_CleansWorktreeWithGitFile(t *testing.T) {
+	t.Setenv("SCION_HOST_UID", "") // Clear container context for worktree ops
 	tmpDir := t.TempDir()
 
 	oldWd, _ := os.Getwd()
