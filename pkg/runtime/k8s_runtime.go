@@ -26,6 +26,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -1748,13 +1749,18 @@ func (r *KubernetesRuntime) Attach(ctx context.Context, id string) error {
 		username = u
 	}
 
+	// Validate username to prevent shell injection via pod annotations.
+	if !regexp.MustCompile(`^[a-zA-Z0-9_-]+$`).MatchString(username) {
+		return fmt.Errorf("invalid username in pod annotation: %q", username)
+	}
+
 	// Build the exec command. If the container already runs as the target
 	// user (common on GKE Autopilot where allowPrivilegeEscalation=false),
 	// skip the su wrapper — it would prompt for a password.
 	// Use a shell wrapper that checks the current user at runtime.
 	execCmd := []string{"sh", "-c", fmt.Sprintf(
-		`if [ "$(whoami)" = "%s" ]; then exec tmux attach -t scion; else exec su - %s -c "tmux attach -t scion"; fi`,
-		username, username)}
+		`target=%q; if [ "$(whoami)" = "$target" ]; then exec tmux attach -t scion; else exec su - "$target" -c "tmux attach -t scion"; fi`,
+		username)}
 
 	option := &corev1.PodExecOptions{
 		Container: "agent",
