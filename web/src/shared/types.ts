@@ -577,7 +577,7 @@ export interface Message {
   type: string;
   urgent?: boolean;
   broadcasted?: boolean;
-  read: boolean;
+  read?: boolean;
   agentId: string;
   createdAt: string;
 }

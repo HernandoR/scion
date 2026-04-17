@@ -75,9 +75,9 @@ export class ScionAgentMessageViewer extends LitElement {
 
   /**
    * Whether Cloud Logging is available for this agent. When false, the
-   * viewer skips Cloud-Logging-only paths: the fallback fetch from
-   * /message-logs and the SSE stream from /message-logs/stream. The hub
-   * message store path still works and is the primary source regardless.
+   * viewer skips the Cloud-Logging-only fallback fetch from
+   * /message-logs. The hub message store path and the hub-store-backed
+   * SSE stream (/messages/stream) work regardless of this setting.
    */
   @property({ type: Boolean })
   cloudLogging = false;
@@ -401,12 +401,6 @@ export class ScionAgentMessageViewer extends LitElement {
     return `/api/v1/agents/${this.agentId}/messages/stream`;
   }
 
-  private get resolvedMessageLogsStreamUrl(): string {
-    if (this.streamUrl) return this.streamUrl;
-    if (this.agentId) return `/api/v1/agents/${this.agentId}/message-logs/stream`;
-    return '';
-  }
-
   private async fetchMessages(): Promise<void> {
     this.loading = true;
     this.error = null;
@@ -606,6 +600,7 @@ export class ScionAgentMessageViewer extends LitElement {
 
     this.eventSource.addEventListener('timeout', () => {
       this.stopStream();
+      void this.fetchMessages(); // backfill anything dropped during the prior window
       this.startStream();
     });
 

@@ -146,7 +146,8 @@ type BrokerStatusEvent struct {
 	Status   string `json:"status"`
 }
 
-// UserMessageEvent is published when an agent sends a message to a human inbox.
+// UserMessageEvent is published when a message involving a human user is
+// persisted — either an agent→user reply or a user→agent instruction.
 type UserMessageEvent struct {
 	ID          string `json:"id"`
 	GroveID     string `json:"groveId"`
@@ -157,6 +158,7 @@ type UserMessageEvent struct {
 	Msg         string `json:"msg"`
 	Type        string `json:"type"`
 	Urgent      bool   `json:"urgent,omitempty"`
+	Broadcasted bool   `json:"broadcasted,omitempty"`
 	AgentID     string `json:"agentId"`
 	CreatedAt   string `json:"createdAt"`
 }
@@ -420,7 +422,9 @@ func (p *ChannelEventPublisher) PublishNotification(_ context.Context, notif *st
 // different consumers can subscribe at the granularity they need:
 //
 //   - user.<recipientID>.message — inbox-tray for the message's addressee
+//     (only when the recipient is a user, not an agent)
 //   - grove.<groveID>.user.message — grove-level user-message feeds
+//     (only when the recipient is a user)
 //   - agent.<agentID>.message — per-agent conversation streams (both
 //     directions; subscribers filter by user participation themselves)
 func (p *ChannelEventPublisher) PublishUserMessage(_ context.Context, msg *store.Message) {
@@ -434,13 +438,20 @@ func (p *ChannelEventPublisher) PublishUserMessage(_ context.Context, msg *store
 		Msg:         msg.Msg,
 		Type:        msg.Type,
 		Urgent:      msg.Urgent,
+		Broadcasted: msg.Broadcasted,
 		AgentID:     msg.AgentID,
 		CreatedAt:   msg.CreatedAt.Format("2006-01-02T15:04:05.000Z"),
 	}
-	if msg.RecipientID != "" {
+	// Only fan out to user-inbox and grove-level subjects when the
+	// recipient is actually a human user. For user→agent messages the
+	// RecipientID is the agent UUID, so publishing to user.<agentID>
+	// would be a no-op (no subscriber) and grove feeds would double-
+	// count by mixing user→agent prompts with agent→user replies.
+	recipientIsUser := strings.HasPrefix(msg.Recipient, "user:")
+	if recipientIsUser && msg.RecipientID != "" {
 		p.publish("user."+msg.RecipientID+".message", evt)
 	}
-	if msg.GroveID != "" {
+	if recipientIsUser && msg.GroveID != "" {
 		p.publish("grove."+msg.GroveID+".user.message", evt)
 	}
 	if msg.AgentID != "" {

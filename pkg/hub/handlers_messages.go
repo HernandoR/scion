@@ -216,6 +216,16 @@ func (s *Server) handleAgentMessagesStream(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// The event bus is an interface; only ChannelEventPublisher supports
+	// subscription. Check this before hitting the store so noop-publisher
+	// hubs fail fast without a wasted DB roundtrip.
+	ep, ok := s.events.(*ChannelEventPublisher)
+	if !ok {
+		writeError(w, http.StatusNotImplemented, "not_implemented",
+			"Real-time message streaming is not available on this hub", nil)
+		return
+	}
+
 	ctx := r.Context()
 	user := GetUserIdentityFromContext(ctx)
 	if user == nil {
@@ -238,17 +248,6 @@ func (s *Server) handleAgentMessagesStream(w http.ResponseWriter, r *http.Reques
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "streaming not supported", http.StatusInternalServerError)
-		return
-	}
-
-	// The event bus is an interface; only ChannelEventPublisher supports
-	// subscription. A hub configured with a noop publisher has no source
-	// of real-time events to stream, so surface a clear 501 instead of
-	// silently returning an empty stream.
-	ep, ok := s.events.(*ChannelEventPublisher)
-	if !ok {
-		writeError(w, http.StatusNotImplemented, "not_implemented",
-			"Real-time message streaming is not available on this hub", nil)
 		return
 	}
 

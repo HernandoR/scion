@@ -4475,6 +4475,11 @@ func (s *Server) handleGroveAgentAction(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 
+	// NOTE: messages/stream is intentionally NOT routed here. The grove-
+	// scoped path only serves message-logs endpoints (Cloud Logging).
+	// The hub-store-backed messages/stream is agent-scoped only
+	// (/api/v1/agents/{id}/messages/stream), matching handleAgentByID.
+
 	if r.Method != http.MethodPost {
 		MethodNotAllowed(w)
 		return
