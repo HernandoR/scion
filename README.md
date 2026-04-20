@@ -71,14 +71,14 @@ scion start debug "Help me debug this error" --attach
 
 以下内容只讲“怎么用”，不涉及设计、部署和安装细节。
 
-### 1) 先理解四个核心概念
+### 先理解四个核心概念
 
 - **Agent（智能体）**：执行任务的容器化工作单元。  
 - **Grove（项目空间）**：一个项目下的 Scion 工作空间（通常对应 `.scion`）。  
 - **Hub（控制平面）**：团队协作时的集中管理端（可选）。  
 - **Runtime Broker（执行节点）**：真正运行 Agent 的机器（本机或远端）。  
 
-### 2) 项目管理（日常最常用）
+### 项目管理（日常最常用）
 
 在项目目录中启动和管理 Agent：
 
@@ -102,7 +102,7 @@ scion attach fix-login
 scion delete fix-login
 ```
 
-### 3) 创建并启用 Broker（Hub 模式）
+### 配置并启用 Broker（Hub 模式）
 
 如果你在团队 Hub 中提供本机算力，常见流程是：
 
@@ -123,7 +123,7 @@ scion broker provide
 scion broker status
 ```
 
-### 4) Agent 协作与贡献（实践建议）
+### Agent 协作与贡献（实践建议）
 
 1. 每个 Agent 聚焦单一目标（如“写测试”或“修一个 bug”）。  
 2. 用 `scion message <name> "..."` 做增量指令，不要一次塞入过多要求。  
