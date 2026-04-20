@@ -24,6 +24,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -95,8 +96,15 @@ func (m *mockStorage) Delete(_ context.Context, objectPath string) error {
 }
 
 func (m *mockStorage) DeletePrefix(_ context.Context, _ string) error { return nil }
-func (m *mockStorage) List(_ context.Context, _ storage.ListOptions) (*storage.ListResult, error) {
-	return &storage.ListResult{}, nil
+func (m *mockStorage) List(_ context.Context, opts storage.ListOptions) (*storage.ListResult, error) {
+	res := &storage.ListResult{}
+	for path, obj := range m.objects {
+		if opts.Prefix != "" && !strings.HasPrefix(path, opts.Prefix) {
+			continue
+		}
+		res.Objects = append(res.Objects, *obj)
+	}
+	return res, nil
 }
 
 func (m *mockStorage) Copy(_ context.Context, _, _ string) (*storage.Object, error) {

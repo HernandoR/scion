@@ -368,6 +368,169 @@ func TestBootstrapTemplatesFromDir_SkipsNonDirectories(t *testing.T) {
 	}
 }
 
+// TestSyncExistingTemplate_ForceReconcilesStorage verifies that a forced
+// re-sync re-uploads modified files, uploads added files, and deletes files
+// that are no longer present on disk. This mirrors the import-from-URL path
+// where the user expects re-import to fully reflect their source changes.
+func TestSyncExistingTemplate_ForceReconcilesStorage(t *testing.T) {
+	srv, s, stor := testTemplateBootstrapServer(t)
+	ctx := context.Background()
+
+	// Initial bootstrap of a template with three files.
+	templatesDir := makeTemplateDir(t, "my-template", map[string]string{
+		"file-keep.txt":   "keep original",
+		"file-update.txt": "before",
+		"file-remove.txt": "stale",
+	})
+	templateDir := filepath.Join(templatesDir, "my-template")
+
+	if err := srv.bootstrapSingleTemplate(ctx, "my-template", templateDir, store.TemplateScopeGlobal, ""); err != nil {
+		t.Fatalf("initial bootstrap failed: %v", err)
+	}
+
+	existing, err := s.GetTemplateBySlug(ctx, "my-template", store.TemplateScopeGlobal, "")
+	if err != nil {
+		t.Fatalf("get template: %v", err)
+	}
+	originalHash := existing.ContentHash
+	if len(stor.objects) != 3 {
+		t.Fatalf("expected 3 storage objects after bootstrap, got %d", len(stor.objects))
+	}
+
+	// Modify the source: update one file, delete one, add a new one.
+	if err := os.WriteFile(filepath.Join(templateDir, "file-update.txt"), []byte("after"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(templateDir, "file-remove.txt")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(templateDir, "file-new.txt"), []byte("new"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	changed, err := srv.syncExistingTemplate(ctx, existing, templateDir, true)
+	if err != nil {
+		t.Fatalf("syncExistingTemplate failed: %v", err)
+	}
+	if !changed {
+		t.Error("expected changed=true when content differs")
+	}
+
+	// DB manifest reflects the new file set.
+	got, err := s.GetTemplateBySlug(ctx, "my-template", store.TemplateScopeGlobal, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ContentHash == originalHash {
+		t.Error("expected ContentHash to change after reconcile")
+	}
+	wantPaths := map[string]bool{"file-keep.txt": true, "file-update.txt": true, "file-new.txt": true}
+	if len(got.Files) != len(wantPaths) {
+		t.Errorf("expected %d files in manifest, got %d", len(wantPaths), len(got.Files))
+	}
+	for _, f := range got.Files {
+		if !wantPaths[f.Path] {
+			t.Errorf("unexpected file in manifest: %q", f.Path)
+		}
+	}
+
+	// Storage reflects the new set: removed file is gone, new file is present.
+	storagePath := got.StoragePath
+	if _, exists := stor.objects[storagePath+"/file-remove.txt"]; exists {
+		t.Error("expected file-remove.txt to be deleted from storage")
+	}
+	if _, exists := stor.objects[storagePath+"/file-new.txt"]; !exists {
+		t.Error("expected file-new.txt to be uploaded to storage")
+	}
+	if _, exists := stor.objects[storagePath+"/file-update.txt"]; !exists {
+		t.Error("expected file-update.txt to remain in storage after re-upload")
+	}
+	if len(stor.objects) != 3 {
+		t.Errorf("expected 3 storage objects after reconcile, got %d", len(stor.objects))
+	}
+}
+
+// TestSyncExistingTemplate_ForceWithoutChangesStillReuploads verifies that
+// force=true re-uploads even when the source files are unchanged, so that
+// the storage state is brought back into sync with the manifest if a user
+// has reason to suspect drift.
+func TestSyncExistingTemplate_ForceWithoutChangesStillReuploads(t *testing.T) {
+	srv, s, stor := testTemplateBootstrapServer(t)
+	ctx := context.Background()
+
+	templatesDir := makeTemplateDir(t, "stable", map[string]string{
+		"only.txt": "same content",
+	})
+	templateDir := filepath.Join(templatesDir, "stable")
+
+	if err := srv.bootstrapSingleTemplate(ctx, "stable", templateDir, store.TemplateScopeGlobal, ""); err != nil {
+		t.Fatalf("bootstrap failed: %v", err)
+	}
+	existing, err := s.GetTemplateBySlug(ctx, "stable", store.TemplateScopeGlobal, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Manually drop the storage object to simulate drift.
+	storagePath := existing.StoragePath
+	delete(stor.objects, storagePath+"/only.txt")
+
+	if _, err := srv.syncExistingTemplate(ctx, existing, templateDir, true); err != nil {
+		t.Fatalf("syncExistingTemplate failed: %v", err)
+	}
+
+	if _, exists := stor.objects[storagePath+"/only.txt"]; !exists {
+		t.Error("expected only.txt to be re-uploaded by forced sync")
+	}
+}
+
+// TestSyncExistingTemplate_PopulatesNewHashForLaterAgents verifies that after
+// a forced re-sync, a freshly resolved template (the path used when creating a
+// new agent) carries the updated ContentHash. This is the chain that ensures
+// new agents created after a re-import use the new template version.
+func TestSyncExistingTemplate_PopulatesNewHashForLaterAgents(t *testing.T) {
+	srv, s, _ := testTemplateBootstrapServer(t)
+	ctx := context.Background()
+
+	templatesDir := makeTemplateDir(t, "claude-template", map[string]string{
+		"home/.bashrc": "# v1",
+	})
+	templateDir := filepath.Join(templatesDir, "claude-template")
+
+	if err := srv.bootstrapSingleTemplate(ctx, "claude-template", templateDir, store.TemplateScopeGlobal, ""); err != nil {
+		t.Fatalf("bootstrap failed: %v", err)
+	}
+	v1, err := srv.resolveTemplate(ctx, "claude-template", "")
+	if err != nil || v1 == nil {
+		t.Fatalf("resolveTemplate v1: %v", err)
+	}
+	v1Hash := v1.ContentHash
+	if v1Hash == "" {
+		t.Fatal("expected non-empty hash after bootstrap")
+	}
+
+	// Edit the source as the user would after editing the git repo.
+	if err := os.WriteFile(filepath.Join(templateDir, "home/.bashrc"), []byte("# v2"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	existing, err := s.GetTemplateBySlug(ctx, "claude-template", store.TemplateScopeGlobal, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := srv.syncExistingTemplate(ctx, existing, templateDir, true); err != nil {
+		t.Fatalf("sync (force) failed: %v", err)
+	}
+
+	v2, err := srv.resolveTemplate(ctx, "claude-template", "")
+	if err != nil || v2 == nil {
+		t.Fatalf("resolveTemplate v2: %v", err)
+	}
+	if v2.ContentHash == v1Hash {
+		t.Errorf("expected ContentHash to change after re-sync; v1=%s v2=%s", v1Hash, v2.ContentHash)
+	}
+}
+
 func TestDetectHarnessFromConfig_NameBased(t *testing.T) {
 	tests := []struct {
 		name     string

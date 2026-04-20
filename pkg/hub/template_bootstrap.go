@@ -82,7 +82,7 @@ func (s *Server) BootstrapTemplatesFromDir(ctx context.Context, templatesDir str
 			imported++
 		} else {
 			// Existing template — check if local files have changed
-			changed, err := s.syncExistingTemplate(ctx, existing, templatePath)
+			changed, err := s.syncExistingTemplate(ctx, existing, templatePath, false)
 			if err != nil {
 				s.templateLog.Warn("template bootstrap: failed to sync template, skipping",
 					"template", name, "error", err)
@@ -102,10 +102,16 @@ func (s *Server) BootstrapTemplatesFromDir(ctx context.Context, templatesDir str
 	return nil
 }
 
-// syncExistingTemplate checks if a local template directory has changed
-// compared to what is stored in the Hub database. If so, it re-uploads
-// the files and updates the database record. Returns true if an update occurred.
-func (s *Server) syncExistingTemplate(ctx context.Context, existing *store.Template, templatePath string) (bool, error) {
+// syncExistingTemplate re-uploads a local template directory into the Hub's
+// storage and updates the database record. When force is true (e.g. an
+// explicit re-import from a remote URL), it always re-uploads all files and
+// reconciles the storage backend by deleting any objects under the template's
+// storage prefix that are not in the new manifest. When force is false (e.g.
+// the periodic bootstrap-from-disk path on hub start), it short-circuits if
+// the aggregate content hash already matches what is stored. The bool return
+// reports whether the resulting ContentHash differed from what was previously
+// stored.
+func (s *Server) syncExistingTemplate(ctx context.Context, existing *store.Template, templatePath string, force bool) (bool, error) {
 	stor := s.GetStorage()
 
 	// Collect current files from disk
@@ -114,33 +120,28 @@ func (s *Server) syncExistingTemplate(ctx context.Context, existing *store.Templ
 		return false, err
 	}
 
-	// Build the file list and compute the new content hash
-	var templateFiles []store.TemplateFile
-	for _, fi := range files {
-		templateFiles = append(templateFiles, store.TemplateFile{
-			Path: fi.Path,
-			Size: fi.Size,
-			Hash: fi.Hash,
-			Mode: fi.Mode,
-		})
-	}
-	newHash := computeContentHash(templateFiles)
-
-	// If content hash matches, nothing to do
-	if newHash == existing.ContentHash {
-		return false, nil
+	if !force {
+		var preview []store.TemplateFile
+		for _, fi := range files {
+			preview = append(preview, store.TemplateFile{
+				Path: fi.Path,
+				Size: fi.Size,
+				Hash: fi.Hash,
+				Mode: fi.Mode,
+			})
+		}
+		if computeContentHash(preview) == existing.ContentHash {
+			return false, nil
+		}
 	}
 
-	s.templateLog.Info("template bootstrap: local template changed, re-syncing",
-		"template", existing.Name, "oldHash", existing.ContentHash, "newHash", newHash)
-
-	// Re-upload all files to storage
 	storagePath := existing.StoragePath
 	if storagePath == "" {
-		storagePath = storage.TemplateStoragePath(existing.Scope, "", existing.Slug)
+		storagePath = storage.TemplateStoragePath(existing.Scope, existing.ScopeID, existing.Slug)
 	}
 
 	var uploadedFiles []store.TemplateFile
+	newPaths := make(map[string]struct{}, len(files))
 	for _, fi := range files {
 		objectPath := storagePath + "/" + fi.Path
 
@@ -165,6 +166,32 @@ func (s *Server) syncExistingTemplate(ctx context.Context, existing *store.Templ
 			Hash: fi.Hash,
 			Mode: fi.Mode,
 		})
+		newPaths[objectPath] = struct{}{}
+	}
+
+	// Reconcile storage: delete objects under the template's prefix that are
+	// no longer in the new manifest, so removed files don't linger.
+	if listResult, err := stor.List(ctx, storage.ListOptions{Prefix: storagePath + "/"}); err != nil {
+		s.templateLog.Warn("template bootstrap: failed to list storage for reconcile",
+			"template", existing.Name, "prefix", storagePath, "error", err)
+	} else {
+		for _, obj := range listResult.Objects {
+			if _, keep := newPaths[obj.Name]; keep {
+				continue
+			}
+			if err := stor.Delete(ctx, obj.Name); err != nil {
+				s.templateLog.Warn("template bootstrap: failed to delete stale object",
+					"template", existing.Name, "object", obj.Name, "error", err)
+			}
+		}
+	}
+
+	newHash := computeContentHash(uploadedFiles)
+	changed := newHash != existing.ContentHash
+
+	if changed {
+		s.templateLog.Info("template bootstrap: template re-synced",
+			"template", existing.Name, "oldHash", existing.ContentHash, "newHash", newHash)
 	}
 
 	// Update the database record with new files and hash
@@ -176,7 +203,7 @@ func (s *Server) syncExistingTemplate(ctx context.Context, existing *store.Templ
 		return false, err
 	}
 
-	return true, nil
+	return changed, nil
 }
 
 // bootstrapSingleTemplate imports one local template directory into the
@@ -372,7 +399,7 @@ func (s *Server) importTemplatesFromRemote(ctx context.Context, groveID, sourceU
 				continue
 			}
 		} else {
-			if _, err := s.syncExistingTemplate(ctx, existing, td.path); err != nil {
+			if _, err := s.syncExistingTemplate(ctx, existing, td.path, true); err != nil {
 				s.templateLog.Warn("template import: failed to sync template, skipping",
 					"name", td.name, "error", err)
 				continue
