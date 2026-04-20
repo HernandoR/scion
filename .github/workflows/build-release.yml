@@ -17,7 +17,8 @@ name: Build Multi-Arch Release
 on:
   push:
     tags:
-      - '*'
+      - "*"
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -52,15 +53,15 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version-file: 'go.mod'
+          go-version-file: "go.mod"
           cache: true
 
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version: '24'
-          cache: 'npm'
-          cache-dependency-path: 'web/package-lock.json'
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: "web/package-lock.json"
 
       - name: Build Web UI
         working-directory: ./web
@@ -77,17 +78,17 @@ jobs:
           else
             VERSION=""
           fi
-          
+
           COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
           BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           PKG="github.com/GoogleCloudPlatform/scion/pkg/version"
-          
+
           # Build ldflags, only including version if available
           LDFLAGS="-X ${PKG}.Commit=${COMMIT} -X ${PKG}.BuildTime=${BUILD_TIME}"
           if [ -n "$VERSION" ]; then
             LDFLAGS="${LDFLAGS} -X ${PKG}.Version=${VERSION}"
           fi
-          
+
           echo "ldflags=${LDFLAGS}" >> $GITHUB_OUTPUT
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
