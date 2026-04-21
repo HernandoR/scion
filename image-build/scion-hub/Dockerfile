@@ -26,15 +26,20 @@ ENV CGO_ENABLED=1
 ARG GIT_COMMIT
 ARG BUILD_TIME
 
-# Copy source required for web build + go build
+# Copy Go module files first so dependency downloads can be cached
 COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source required for web build + go build
 COPY cmd/ ./cmd/
 COPY pkg/ ./pkg/
-COPY web/ ./web/
+COPY web/package*.json ./web/
 
 # Install web dependencies
 RUN cd web && npm ci
 
+# Copy remaining web sources after dependency install for better layer caching
+COPY web/ ./web/
 # Build web assets to embed in Go binary
 RUN cd web && npm run build
 
