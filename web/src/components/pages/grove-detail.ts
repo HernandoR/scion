@@ -297,7 +297,7 @@ export class ScionPageGroveDetail extends LitElement {
       opacity: 0.7;
     }
 
-    .agent-meta .broker-link {
+    .broker-link {
       display: inline-flex;
       align-items: center;
       gap: 0.25rem;
@@ -305,7 +305,7 @@ export class ScionPageGroveDetail extends LitElement {
       text-decoration: none;
     }
 
-    .agent-meta .broker-link:hover {
+    .broker-link:hover {
       color: var(--scion-primary, #3b82f6);
     }
 
@@ -1335,6 +1335,7 @@ export class ScionPageGroveDetail extends LitElement {
             <tr>
               <th>Name</th>
               <th class="hide-mobile">Template</th>
+              <th class="hide-mobile">Broker</th>
               <th class="status-col">Status</th>
               <th class="hide-mobile">Task</th>
               <th style="text-align: right">Actions</th>
@@ -1360,6 +1361,14 @@ export class ScionPageGroveDetail extends LitElement {
           </span>
         </td>
         <td class="hide-mobile">${agent.template}</td>
+        <td class="hide-mobile">
+          ${agent.runtimeBrokerId
+            ? html`<a href="/brokers/${agent.runtimeBrokerId}" class="broker-link">
+                <sl-icon name="hdd-rack"></sl-icon>
+                ${agent.runtimeBrokerName || agent.runtimeBrokerId}
+              </a>`
+            : '\u2014'}
+        </td>
         <td>
           <scion-status-badge
             status=${getAgentDisplayStatus(agent) as StatusType}
