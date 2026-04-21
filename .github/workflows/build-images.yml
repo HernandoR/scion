@@ -27,6 +27,7 @@ on:
           - common
           - all
           - core-base
+          - hub
           - harnesses
         default: 'common'
       tag:
@@ -48,7 +49,7 @@ on:
         required: true
         type: string
       target:
-        description: 'Build target (common, all, core-base, harnesses)'
+        description: 'Build target (common, all, core-base, hub, harnesses)'
         type: string
         default: 'common'
       tag:

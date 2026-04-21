@@ -48,9 +48,10 @@ Required:
 
 Options:
   --target <target>    Build target (default: common)
-                         common    - scion-base + all harnesses (skip core-base)
+                         common    - scion-base + scion-hub + all harnesses (skip core-base)
                          all       - full rebuild including core-base
                          core-base - build only core-base
+                         hub       - build only scion-hub
                          harnesses - build only harness images
   --push               Push images after building (default: build only)
   --platform <plat>    Target platform(s) (default: current architecture)
@@ -143,6 +144,21 @@ build_scion_base() {
   echo "    scion-base done."
 }
 
+
+build_hub() {
+  local base_tag="${1:-latest}"
+  echo "==> Building scion-hub..."
+  docker buildx build \
+    ${PLATFORM_ARGS[@]+"${PLATFORM_ARGS[@]}"} \
+    --build-arg "BASE_IMAGE=${REGISTRY}/core-base:${base_tag}" \
+    --build-arg "GIT_COMMIT=$(git -C "${REPO_ROOT}" rev-parse HEAD 2>/dev/null || echo unknown)" \
+    -t "${REGISTRY}/scion-hub:${TAG}" \
+    -f "${IMAGE_BUILD_DIR}/scion-hub/Dockerfile" \
+    ${PUSH} ${LOAD_ARG} \
+    "${REPO_ROOT}"
+  echo "    scion-hub done."
+}
+
 build_harness() {
   local name="$1"
   local base_tag="${2:-latest}"
@@ -170,15 +186,20 @@ ensure_builder
 case "${TARGET}" in
   common)
     build_scion_base "latest"
+    build_hub "latest"
     build_all_harnesses "${TAG}"
     ;;
   all)
     build_core_base
     build_scion_base "${TAG}"
+    build_hub "${TAG}"
     build_all_harnesses "${TAG}"
     ;;
   core-base)
     build_core_base
+    ;;
+  hub)
+    build_hub "latest"
     ;;
   harnesses)
     build_all_harnesses "latest"
