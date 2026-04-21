@@ -60,6 +60,7 @@ IMAGES=(
   "${REGISTRY}/scion-gemini:${TAG}"
   "${REGISTRY}/scion-opencode:${TAG}"
   "${REGISTRY}/scion-codex:${TAG}"
+  "${REGISTRY}/scion-hub:${TAG}"
 )
 
 detect_runtime() {

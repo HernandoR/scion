@@ -40,7 +40,7 @@ while [[ $# -gt 0 ]]; do
     -h|--help)
       echo "Usage: $(basename "$0") [--project <project>] [--registry <registry>] [target]"
       echo ""
-      echo "Targets: common (default), all, core-base, scion-base, harnesses"
+      echo "Targets: common (default), all, core-base, scion-base, hub, harnesses"
       echo ""
       echo "Options:"
       echo "  --project <project>    GCP project (default: \$GCLOUD_PROJECT or gcloud config)"
@@ -78,7 +78,7 @@ fi
 
 case "${TARGET}" in
   common)
-    echo "Submitting common build (scion-base -> harnesses) to Cloud Build..."
+    echo "Submitting common build (scion-base + scion-hub -> harnesses) to Cloud Build..."
     CONFIG="image-build/cloudbuild-common.yaml"
     ;;
   all)
@@ -92,6 +92,10 @@ case "${TARGET}" in
   scion-base)
     echo "Submitting scion-base build to Cloud Build..."
     CONFIG="image-build/cloudbuild-scion-base.yaml"
+    ;;
+  hub)
+    echo "Submitting scion-hub build to Cloud Build..."
+    CONFIG="image-build/cloudbuild-hub.yaml"
     ;;
   harnesses)
     echo "Submitting harnesses build to Cloud Build..."
