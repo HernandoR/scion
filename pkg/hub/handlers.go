@@ -584,9 +584,12 @@ func (s *Server) createAgentInGrove(
 		}
 	}
 
-	// Resolve harness config: prefer template metadata harness field, then explicit request field.
+	// Resolve harness config: prefer the user's explicit choice, then template default.
 	// Do NOT use req.Template as fallback since it may contain a UUID.
-	harnessConfig := s.getHarnessConfigFromTemplate(resolvedTemplate, req.HarnessConfig)
+	harnessConfig := req.HarnessConfig
+	if harnessConfig == "" {
+		harnessConfig = s.getHarnessConfigFromTemplate(resolvedTemplate, "")
+	}
 
 	agent := &store.Agent{
 		ID:              api.NewUUID(),
