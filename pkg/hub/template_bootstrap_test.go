@@ -876,3 +876,41 @@ func TestBootstrapTemplatesFromDir_ImportsDefaultHarnessConfig(t *testing.T) {
 		t.Error("expected harness config 'gemini-web' to be imported")
 	}
 }
+
+func TestBootstrapTemplatesFromDir_BackfillsDefaultHarnessConfig(t *testing.T) {
+	srv, s, _ := testTemplateBootstrapServer(t)
+	ctx := context.Background()
+
+	templatesDir := makeTemplateDir(t, "backfill-tmpl", map[string]string{
+		"scion-agent.yaml":                       "default_harness_config: claude-web\n",
+		"harness-configs/claude-web/config.yaml": "harness: claude\n",
+	})
+
+	// First bootstrap populates DefaultHarnessConfig
+	if err := srv.BootstrapTemplatesFromDir(ctx, templatesDir); err != nil {
+		t.Fatalf("first bootstrap failed: %v", err)
+	}
+
+	// Simulate a pre-migration template by clearing the field in the DB
+	tmpl, err := s.GetTemplateBySlug(ctx, "backfill-tmpl", store.TemplateScopeGlobal, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpl.DefaultHarnessConfig = ""
+	if err := s.UpdateTemplate(ctx, tmpl); err != nil {
+		t.Fatal(err)
+	}
+
+	// Second bootstrap should backfill despite content hash matching
+	if err := srv.BootstrapTemplatesFromDir(ctx, templatesDir); err != nil {
+		t.Fatalf("second bootstrap failed: %v", err)
+	}
+
+	tmpl, err = s.GetTemplateBySlug(ctx, "backfill-tmpl", store.TemplateScopeGlobal, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tmpl.DefaultHarnessConfig != "claude-web" {
+		t.Errorf("expected DefaultHarnessConfig 'claude-web' after backfill, got %q", tmpl.DefaultHarnessConfig)
+	}
+}

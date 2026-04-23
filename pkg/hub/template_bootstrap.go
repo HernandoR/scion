@@ -130,7 +130,23 @@ func (s *Server) syncExistingTemplate(ctx context.Context, existing *store.Templ
 				Mode: fi.Mode,
 			})
 		}
-		if computeContentHash(preview) == existing.ContentHash {
+		hashMatch := computeContentHash(preview) == existing.ContentHash
+
+		// Even when content hasn't changed, backfill DefaultHarnessConfig
+		// for templates imported before that field existed.
+		if hashMatch && existing.DefaultHarnessConfig == "" {
+			cfgInfo := detectHarnessFromConfig(templatePath, existing.Name)
+			if cfgInfo.DefaultHarnessConfig != "" {
+				existing.DefaultHarnessConfig = cfgInfo.DefaultHarnessConfig
+				existing.Harness = cfgInfo.Harness
+				_ = s.store.UpdateTemplate(ctx, existing)
+				s.importTemplateHarnessConfigs(ctx, templatePath, existing.Scope, existing.ScopeID)
+				s.templateLog.Info("template bootstrap: backfilled defaultHarnessConfig",
+					"template", existing.Name, "defaultHarnessConfig", cfgInfo.DefaultHarnessConfig)
+			}
+		}
+
+		if hashMatch {
 			return false, nil
 		}
 	}
