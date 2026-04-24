@@ -6,11 +6,12 @@ Dockerfiles and build configurations for Scion container images.
 
 ```
 core-base          System dependencies (Go, Node, Python)
-  └── scion-base   Adds sciontool binary and scion user
-        ├── claude     Claude Code harness
-        ├── gemini     Gemini CLI harness
-        ├── opencode   OpenCode harness
-        └── codex      Codex harness
+  ├── scion-base   Adds scion/sciontool binaries and scion user
+  │     ├── claude     Claude Code harness
+  │     ├── gemini     Gemini CLI harness
+  │     ├── opencode   OpenCode harness
+  │     └── codex      Codex harness
+  └── scion-hub    Hub server image with embedded web frontend
 ```
 
 Each harness directory contains a `Dockerfile` that extends `scion-base` with harness-specific tooling.
@@ -59,7 +60,8 @@ The workflow is also available as a reusable workflow via `workflow_call` for us
 ## Cloud Build Configs
 
 - `cloudbuild.yaml` - Full rebuild of all layers.
-- `cloudbuild-common.yaml` - Rebuild scion-base + harnesses (most common).
+- `cloudbuild-common.yaml` - Rebuild scion-base + scion-hub + harnesses (most common).
 - `cloudbuild-core-base.yaml` - Rebuild `core-base` only.
 - `cloudbuild-scion-base.yaml` - Rebuild `scion-base` only.
+- `cloudbuild-hub.yaml` - Rebuild `scion-hub` only.
 - `cloudbuild-harnesses.yaml` - Rebuild all harness images only.
