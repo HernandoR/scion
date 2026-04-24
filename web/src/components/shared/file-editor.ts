@@ -357,10 +357,6 @@ export class ScionFileEditor extends LitElement {
       this.newFileError = 'Invalid file path';
       return;
     }
-    if (savePath === '.scion' || savePath.startsWith('.scion/')) {
-      this.newFileError = 'Cannot create files in .scion directory';
-      return;
-    }
 
     this.saving = true;
     this.error = null;

@@ -29,6 +29,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -134,10 +135,10 @@ func TestGroveWorkspaceList_EmptyWorkspace(t *testing.T) {
 	var resp GroveWorkspaceListResponse
 	require.NoError(t, json.NewDecoder(rec.Body).Decode(&resp))
 
-	// The .scion directory is excluded, so the workspace should appear empty
-	assert.Equal(t, 0, resp.TotalCount)
-	assert.Equal(t, int64(0), resp.TotalSize)
-	assert.Empty(t, resp.Files)
+	// Only .scion/settings.yaml from grove init should be present
+	for _, f := range resp.Files {
+		assert.True(t, strings.HasPrefix(f.Path, ".scion/"), "unexpected non-.scion file: %s", f.Path)
+	}
 }
 
 func TestGroveWorkspaceList_WithFiles(t *testing.T) {
@@ -155,10 +156,6 @@ func TestGroveWorkspaceList_WithFiles(t *testing.T) {
 	var resp GroveWorkspaceListResponse
 	require.NoError(t, json.NewDecoder(rec.Body).Decode(&resp))
 
-	assert.Equal(t, 2, resp.TotalCount)
-	assert.Equal(t, int64(11+6), resp.TotalSize) // "hello world" + "nested"
-
-	// Check file paths
 	paths := make(map[string]bool)
 	for _, f := range resp.Files {
 		paths[f.Path] = true
@@ -167,16 +164,12 @@ func TestGroveWorkspaceList_WithFiles(t *testing.T) {
 	assert.True(t, paths[filepath.Join("subdir", "nested.txt")])
 }
 
-func TestGroveWorkspaceList_ExcludesScionDir(t *testing.T) {
+func TestGroveWorkspaceList_IncludesScionDir(t *testing.T) {
 	srv, _ := testServer(t)
 	grove, workspacePath := createTestHubNativeGrove(t, srv, "WS List Scion")
 
-	// The .scion dir is created by initHubNativeGrove.
-	// Add a file outside .scion to verify it appears.
 	require.NoError(t, os.WriteFile(filepath.Join(workspacePath, "visible.txt"), []byte("yes"), 0644))
-
-	// Also add a file inside .scion to verify it does NOT appear.
-	require.NoError(t, os.WriteFile(filepath.Join(workspacePath, ".scion", "extra.txt"), []byte("hidden"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(workspacePath, ".scion", "extra.txt"), []byte("also visible"), 0644))
 
 	rec := doRequest(t, srv, http.MethodGet, fmt.Sprintf("/api/v1/groves/%s/workspace/files", grove.ID), nil)
 	require.Equal(t, http.StatusOK, rec.Code, "body: %s", rec.Body.String())
@@ -184,8 +177,12 @@ func TestGroveWorkspaceList_ExcludesScionDir(t *testing.T) {
 	var resp GroveWorkspaceListResponse
 	require.NoError(t, json.NewDecoder(rec.Body).Decode(&resp))
 
-	assert.Equal(t, 1, resp.TotalCount)
-	assert.Equal(t, "visible.txt", resp.Files[0].Path)
+	paths := make(map[string]bool)
+	for _, f := range resp.Files {
+		paths[f.Path] = true
+	}
+	assert.True(t, paths["visible.txt"])
+	assert.True(t, paths[filepath.Join(".scion", "extra.txt")])
 }
 
 func TestGroveWorkspaceList_GroveNotFound(t *testing.T) {
@@ -281,17 +278,6 @@ func TestGroveWorkspaceUpload_PathTraversalRejected(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
-func TestGroveWorkspaceUpload_ScionDirRejected(t *testing.T) {
-	srv, _ := testServer(t)
-	grove, _ := createTestHubNativeGrove(t, srv, "WS Upload Scion")
-
-	files := map[string][]byte{
-		".scion/evil.yaml": []byte("bad config"),
-	}
-	rec := doMultipartRequest(t, srv, http.MethodPost, fmt.Sprintf("/api/v1/groves/%s/workspace/files", grove.ID), files)
-	assert.Equal(t, http.StatusBadRequest, rec.Code)
-}
-
 func TestGroveWorkspaceUpload_NoFilesRejected(t *testing.T) {
 	srv, _ := testServer(t)
 	grove, _ := createTestHubNativeGrove(t, srv, "WS Upload Empty")
@@ -346,27 +332,6 @@ func TestGroveWorkspaceDelete_NotFound(t *testing.T) {
 
 	rec := doRequest(t, srv, http.MethodDelete, fmt.Sprintf("/api/v1/groves/%s/workspace/files/nonexistent.txt", grove.ID), nil)
 	assert.Equal(t, http.StatusNotFound, rec.Code)
-}
-
-func TestGroveWorkspaceDelete_ScionDirRejected(t *testing.T) {
-	srv, _ := testServer(t)
-	grove, _ := createTestHubNativeGrove(t, srv, "WS Delete Scion")
-
-	rec := doRequest(t, srv, http.MethodDelete, fmt.Sprintf("/api/v1/groves/%s/workspace/files/.scion/settings.yaml", grove.ID), nil)
-	assert.Equal(t, http.StatusBadRequest, rec.Code)
-}
-
-func TestGroveWorkspaceDelete_TraversalRejected(t *testing.T) {
-	srv, _ := testServer(t)
-	grove, _ := createTestHubNativeGrove(t, srv, "WS Delete Traversal")
-
-	// Use a path with embedded traversal that won't be cleaned by the HTTP router
-	// The URL router normalizes bare "../" so we test the handler's validation
-	// by crafting a path that makes it through the router but is caught by validateWorkspaceFilePath.
-	// Since the router resolves "../", test via the handler validation unit tests instead.
-	// Here we verify the handler rejects absolute-looking paths and .scion paths.
-	rec := doRequest(t, srv, http.MethodDelete, fmt.Sprintf("/api/v1/groves/%s/workspace/files/.scion/agents/test", grove.ID), nil)
-	assert.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
 func TestGroveWorkspaceDelete_CleansEmptyDirs(t *testing.T) {
@@ -497,14 +462,6 @@ func TestGroveWorkspaceDownload_FormatJSON_TooLarge(t *testing.T) {
 	assert.Contains(t, rec.Body.String(), "too large")
 }
 
-func TestGroveWorkspaceDownload_ScionDirRejected(t *testing.T) {
-	srv, _ := testServer(t)
-	grove, _ := createTestHubNativeGrove(t, srv, "WS Download Scion")
-
-	rec := doRequest(t, srv, http.MethodGet, fmt.Sprintf("/api/v1/groves/%s/workspace/files/.scion/settings.yaml", grove.ID), nil)
-	assert.Equal(t, http.StatusBadRequest, rec.Code)
-}
-
 // ============================================================================
 // Archive Download Tests
 // ============================================================================
@@ -540,10 +497,6 @@ func TestGroveWorkspaceArchive_Success(t *testing.T) {
 
 	assert.Equal(t, "hello world", files["hello.txt"])
 	assert.Equal(t, "nested", files[filepath.Join("subdir", "nested.txt")])
-	// .scion directory should not be in the archive
-	for name := range files {
-		assert.False(t, name == ".scion" || len(name) > 6 && name[:6] == ".scion", "should not contain .scion files: %s", name)
-	}
 }
 
 func TestGroveWorkspaceArchive_EmptyWorkspace(t *testing.T) {
@@ -553,14 +506,10 @@ func TestGroveWorkspaceArchive_EmptyWorkspace(t *testing.T) {
 	rec := doRequest(t, srv, http.MethodGet, fmt.Sprintf("/api/v1/groves/%s/workspace/archive", grove.ID), nil)
 	require.Equal(t, http.StatusOK, rec.Code)
 
-	// Should be a valid empty zip
+	// Should be a valid zip
 	assert.Equal(t, "application/zip", rec.Header().Get("Content-Type"))
-	zipReader, err := zip.NewReader(bytes.NewReader(rec.Body.Bytes()), int64(rec.Body.Len()))
+	_, err := zip.NewReader(bytes.NewReader(rec.Body.Bytes()), int64(rec.Body.Len()))
 	require.NoError(t, err)
-	// Only .scion files would be present but those are excluded
-	for _, f := range zipReader.File {
-		assert.False(t, f.Name == ".scion" || len(f.Name) > 6 && f.Name[:6] == ".scion", "should not contain .scion files")
-	}
 }
 
 func TestGroveWorkspaceArchive_GitGroveRejected(t *testing.T) {
@@ -637,15 +586,6 @@ func TestGroveWorkspaceWrite_ConflictDetection(t *testing.T) {
 	content, err := os.ReadFile(filePath)
 	require.NoError(t, err)
 	assert.Equal(t, "original", string(content))
-}
-
-func TestGroveWorkspaceWrite_ScionDirRejected(t *testing.T) {
-	srv, _ := testServer(t)
-	grove, _ := createTestHubNativeGrove(t, srv, "WS Write Scion")
-
-	body := GroveWorkspaceWriteRequest{Content: "bad"}
-	rec := doRequest(t, srv, http.MethodPut, fmt.Sprintf("/api/v1/groves/%s/workspace/files/.scion/evil.yaml", grove.ID), body)
-	assert.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
 func TestGroveWorkspaceWrite_PathTraversalRejected(t *testing.T) {
@@ -738,9 +678,9 @@ func TestValidateWorkspaceFilePath(t *testing.T) {
 		{name: "absolute unix", path: "/etc/passwd", wantErr: true, errMsg: "absolute"},
 		{name: "traversal parent", path: "../escape.txt", wantErr: true, errMsg: "traversal"},
 		{name: "traversal mid", path: "foo/../../escape.txt", wantErr: true, errMsg: "traversal"},
-		{name: "scion root", path: ".scion", wantErr: true, errMsg: "reserved"},
-		{name: "scion file", path: ".scion/settings.yaml", wantErr: true, errMsg: "reserved"},
-		{name: "scion nested", path: ".scion/agents/test.yaml", wantErr: true, errMsg: "reserved"},
+		{name: "scion root", path: ".scion", wantErr: false},
+		{name: "scion file", path: ".scion/settings.yaml", wantErr: false},
+		{name: "scion nested", path: ".scion/agents/test.yaml", wantErr: false},
 	}
 
 	for _, tt := range tests {
@@ -766,12 +706,19 @@ func TestGroveWorkspace_UploadListDelete_Integration(t *testing.T) {
 	srv, _ := testServer(t)
 	grove, _ := createTestHubNativeGrove(t, srv, "WS Integration")
 
+	// Get baseline count (includes .scion files from grove init)
+	rec := doRequest(t, srv, http.MethodGet, fmt.Sprintf("/api/v1/groves/%s/workspace/files", grove.ID), nil)
+	require.Equal(t, http.StatusOK, rec.Code)
+	var baseResp GroveWorkspaceListResponse
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&baseResp))
+	baseCount := baseResp.TotalCount
+
 	// Upload files
 	files := map[string][]byte{
 		"main.py":        []byte("print('hello')"),
 		"lib/helpers.py": []byte("def help(): pass"),
 	}
-	rec := doMultipartRequest(t, srv, http.MethodPost, fmt.Sprintf("/api/v1/groves/%s/workspace/files", grove.ID), files)
+	rec = doMultipartRequest(t, srv, http.MethodPost, fmt.Sprintf("/api/v1/groves/%s/workspace/files", grove.ID), files)
 	require.Equal(t, http.StatusOK, rec.Code, "upload body: %s", rec.Body.String())
 
 	// List files
@@ -780,19 +727,25 @@ func TestGroveWorkspace_UploadListDelete_Integration(t *testing.T) {
 
 	var listResp GroveWorkspaceListResponse
 	require.NoError(t, json.NewDecoder(rec.Body).Decode(&listResp))
-	assert.Equal(t, 2, listResp.TotalCount)
+	assert.Equal(t, baseCount+2, listResp.TotalCount)
 
 	// Delete one file
 	rec = doRequest(t, srv, http.MethodDelete, fmt.Sprintf("/api/v1/groves/%s/workspace/files/main.py", grove.ID), nil)
 	assert.Equal(t, http.StatusNoContent, rec.Code)
 
-	// List again — should have one file
+	// List again — should have one fewer
 	rec = doRequest(t, srv, http.MethodGet, fmt.Sprintf("/api/v1/groves/%s/workspace/files", grove.ID), nil)
 	require.Equal(t, http.StatusOK, rec.Code)
 
 	require.NoError(t, json.NewDecoder(rec.Body).Decode(&listResp))
-	assert.Equal(t, 1, listResp.TotalCount)
-	assert.Equal(t, filepath.Join("lib", "helpers.py"), listResp.Files[0].Path)
+	assert.Equal(t, baseCount+1, listResp.TotalCount)
+
+	paths := make(map[string]bool)
+	for _, f := range listResp.Files {
+		paths[f.Path] = true
+	}
+	assert.True(t, paths[filepath.Join("lib", "helpers.py")])
+	assert.False(t, paths["main.py"])
 }
 
 // ============================================================================

@@ -132,14 +132,6 @@ func (s *Server) handleGroveWorkspaceList(w http.ResponseWriter, workspacePath s
 			return nil
 		}
 
-		// Skip the .scion directory
-		if relPath == ".scion" || strings.HasPrefix(relPath, ".scion/") || strings.HasPrefix(relPath, ".scion\\") {
-			if d.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-
 		// Skip directories (only list files)
 		if d.IsDir() {
 			return nil
@@ -465,14 +457,6 @@ func (s *Server) handleGroveWorkspaceArchive(w http.ResponseWriter, r *http.Requ
 			return nil
 		}
 
-		// Skip the .scion directory
-		if relPath == ".scion" || strings.HasPrefix(relPath, ".scion/") || strings.HasPrefix(relPath, ".scion"+string(filepath.Separator)) {
-			if d.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-
 		// Skip directories
 		if d.IsDir() {
 			return nil
@@ -767,7 +751,7 @@ func resolveHubGroveSharedDirPath(groveSlug, dirName string) (string, error) {
 }
 
 // validateWorkspaceFilePath validates that a file path is safe for workspace operations.
-// It rejects empty paths, absolute paths, path traversal, and .scion/ prefix.
+// It rejects empty paths, absolute paths, and path traversal.
 func validateWorkspaceFilePath(path string) error {
 	if path == "" {
 		return fmt.Errorf("path is empty")
@@ -782,11 +766,6 @@ func validateWorkspaceFilePath(path string) error {
 	cleaned := filepath.Clean(path)
 	if strings.HasPrefix(cleaned, "..") || strings.Contains(cleaned, string(filepath.Separator)+"..") {
 		return fmt.Errorf("path traversal not allowed")
-	}
-
-	// Reject .scion/ prefix
-	if cleaned == ".scion" || strings.HasPrefix(cleaned, ".scion/") || strings.HasPrefix(cleaned, ".scion"+string(filepath.Separator)) {
-		return fmt.Errorf(".scion directory is reserved")
 	}
 
 	return nil

@@ -59,9 +59,9 @@ RUN curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -
 
 # Install Git from source
 WORKDIR /opt
-RUN wget https://www.kernel.org/pub/software/scm/git/git-2.52.0.tar.gz
-RUN tar -xvf git-2.52.0.tar.gz
-WORKDIR /opt/git-2.52.0/
+RUN wget https://www.kernel.org/pub/software/scm/git/git-2.54.0.tar.gz
+RUN tar -xvf git-2.54.0.tar.gz
+WORKDIR /opt/git-2.54.0/
 RUN make prefix=/usr/local all
 RUN make prefix=/usr/local install
 
@@ -143,6 +143,12 @@ COPY --from=bun-source /usr/local/bin/bun /usr/local/bin/bun
 RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list && \
     apt-get update && apt-get install -y google-cloud-cli && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Install kubectl
+RUN ARCH=$(dpkg --print-architecture) && \
+    curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/${ARCH}/kubectl" && \
+    install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl && \
+    rm kubectl
 
 # Install golangci-lint
 RUN ARCH=$(dpkg --print-architecture) && \

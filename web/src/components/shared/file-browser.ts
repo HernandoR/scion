@@ -322,6 +322,10 @@ function isPreviewable(filePath: string): boolean {
   return PREVIEWABLE_EXTENSIONS.has(ext);
 }
 
+function isDotFile(path: string): boolean {
+  return path.split('/').some((segment) => segment.startsWith('.'));
+}
+
 function formatFileSize(bytes: number): string {
   if (bytes === 0) return '0 B';
   const units = ['B', 'KB', 'MB', 'GB'];
@@ -355,6 +359,7 @@ export class ScionFileBrowser extends LitElement {
   @state() private sortField: 'name' | 'size' | 'modified' = 'name';
   @state() private sortDir: 'asc' | 'desc' = 'asc';
   @state() private filterText = '';
+  @state() private showDotFiles = false;
 
   static override styles = css`
     :host {
@@ -382,6 +387,11 @@ export class ScionFileBrowser extends LitElement {
 
     .filter-input {
       width: 14rem;
+    }
+
+    .dot-files-toggle {
+      font-size: 0.8125rem;
+      white-space: nowrap;
     }
 
     .toolbar-actions {
@@ -605,8 +615,14 @@ export class ScionFileBrowser extends LitElement {
     return this.sortField === field ? (this.sortDir === 'asc' ? '▲' : '▼') : '▲';
   }
 
+  private getBaseFiles(): FileEntry[] {
+    if (this.showDotFiles) return this.files;
+    return this.files.filter((f) => !isDotFile(f.path));
+  }
+
   private getFilteredAndSortedFiles(): FileEntry[] {
-    const filtered = this.filterText ? this.applyFilter(this.files) : this.files;
+    const base = this.getBaseFiles();
+    const filtered = this.filterText ? this.applyFilter(base) : base;
     return [...filtered].sort((a, b) => {
       let cmp = 0;
       switch (this.sortField) {
@@ -756,10 +772,12 @@ export class ScionFileBrowser extends LitElement {
   }
 
   private renderToolbar() {
-    const filtered = this.filterText ? this.applyFilter(this.files) : this.files;
+    const base = this.getBaseFiles();
+    const filtered = this.filterText ? this.applyFilter(base) : base;
     const countLabel = this.filterText
-      ? `${filtered.length} / ${this.files.length} file${this.files.length !== 1 ? 's' : ''}`
-      : `${this.files.length} file${this.files.length !== 1 ? 's' : ''}`;
+      ? `${filtered.length} / ${base.length} file${base.length !== 1 ? 's' : ''}`
+      : `${base.length} file${base.length !== 1 ? 's' : ''}`;
+    const hasDotFiles = this.files.some((f) => isDotFile(f.path));
 
     return html`
       <div class="toolbar">
@@ -786,6 +804,18 @@ export class ScionFileBrowser extends LitElement {
                 >
                   <sl-icon name="funnel" slot="prefix"></sl-icon>
                 </sl-input>
+              `
+            : nothing}
+          ${hasDotFiles
+            ? html`
+                <sl-checkbox
+                  class="dot-files-toggle"
+                  size="small"
+                  ?checked=${this.showDotFiles}
+                  @sl-change=${(e: Event) => {
+                    this.showDotFiles = (e.target as HTMLInputElement).checked;
+                  }}
+                >show .dot files</sl-checkbox>
               `
             : nothing}
         </div>
