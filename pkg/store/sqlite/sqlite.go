@@ -1769,7 +1769,7 @@ func (s *SQLiteStore) MarkStalledAgents(ctx context.Context, activityThreshold, 
 		  AND last_seen >= ?
 		  AND last_seen IS NOT NULL
 		  AND phase = 'running'
-		  AND activity NOT IN ('completed', 'limits_exceeded', 'blocked', 'stalled', 'offline', 'idle', 'waiting_for_input')
+		  AND activity NOT IN ('completed', 'limits_exceeded', 'blocked', 'stalled', 'offline', 'waiting_for_input')
 	`, now, activityThreshold, heartbeatRecency)
 	if err != nil {
 		return nil, err
