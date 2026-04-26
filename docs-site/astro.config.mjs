@@ -79,6 +79,7 @@ export default defineConfig({
 				{
 				        label: 'Hub Administration',					items: [
 						{ label: 'Hub Setup', slug: 'hub-admin/hub-server' },
+						{ label: 'Hosting with Docker', slug: 'hub-admin/docker' },
 						{ label: 'Kubernetes', slug: 'hub-admin/kubernetes' },
 						{ label: 'Security', slug: 'hub-admin/auth' },
 						{ label: 'Permissions', slug: 'hub-admin/permissions' },
