@@ -278,13 +278,30 @@ func (s *Server) listAgents(w http.ResponseWriter, r *http.Request) {
 		IncludeDeleted:  query.Get("includeDeleted") == "true",
 	}
 
-	// mine=true: restrict to agents in groves the user owns/is a member of,
-	// plus agents the user personally created
-	if query.Get("mine") == "true" {
+	// scope=mine: agents the current user created
+	// scope=shared: agents in groves the user is a member of, but not created by them
+	// mine=true (legacy): agents the user created or in groves they own/are a member of
+	switch query.Get("scope") {
+	case "mine":
 		if userIdent := GetUserIdentityFromContext(ctx); userIdent != nil {
 			filter.OwnerID = userIdent.ID()
+		}
+	case "shared":
+		if userIdent := GetUserIdentityFromContext(ctx); userIdent != nil {
 			if groveIDs := s.resolveUserGroveIDs(ctx, userIdent.ID()); len(groveIDs) > 0 {
-				filter.MemberOrOwnerGroveIDs = groveIDs
+				filter.MemberGroveIDs = groveIDs
+				filter.ExcludeOwnerID = userIdent.ID()
+			} else {
+				filter.MemberGroveIDs = []string{"__none__"}
+			}
+		}
+	default:
+		if query.Get("mine") == "true" {
+			if userIdent := GetUserIdentityFromContext(ctx); userIdent != nil {
+				filter.OwnerID = userIdent.ID()
+				if groveIDs := s.resolveUserGroveIDs(ctx, userIdent.ID()); len(groveIDs) > 0 {
+					filter.MemberOrOwnerGroveIDs = groveIDs
+				}
 			}
 		}
 	}

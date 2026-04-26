@@ -1410,9 +1410,20 @@ func (s *SQLiteStore) ListAgents(ctx context.Context, filter store.AgentFilter, 
 			args = append(args, filter.OwnerID)
 		}
 		conditions = append(conditions, "("+strings.Join(orParts, " OR ")+")")
+	} else if len(filter.MemberGroveIDs) > 0 {
+		placeholders := make([]string, len(filter.MemberGroveIDs))
+		for i, id := range filter.MemberGroveIDs {
+			placeholders[i] = "?"
+			args = append(args, id)
+		}
+		conditions = append(conditions, "grove_id IN ("+strings.Join(placeholders, ",")+")")
 	} else if filter.OwnerID != "" {
 		conditions = append(conditions, "owner_id = ?")
 		args = append(args, filter.OwnerID)
+	}
+	if filter.ExcludeOwnerID != "" {
+		conditions = append(conditions, "owner_id != ?")
+		args = append(args, filter.ExcludeOwnerID)
 	}
 	if filter.GroveID != "" {
 		conditions = append(conditions, "grove_id = ?")
@@ -1758,7 +1769,7 @@ func (s *SQLiteStore) MarkStalledAgents(ctx context.Context, activityThreshold, 
 		  AND last_seen >= ?
 		  AND last_seen IS NOT NULL
 		  AND phase = 'running'
-		  AND activity NOT IN ('completed', 'limits_exceeded', 'blocked', 'stalled', 'offline', 'idle', 'waiting_for_input')
+		  AND activity NOT IN ('completed', 'limits_exceeded', 'blocked', 'stalled', 'offline', 'waiting_for_input')
 	`, now, activityThreshold, heartbeatRecency)
 	if err != nil {
 		return nil, err
