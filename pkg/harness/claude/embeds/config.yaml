@@ -24,6 +24,9 @@ interrupt_key: Escape
 instructions_file: .claude/CLAUDE.md
 system_prompt_file: .claude/system-prompt.md
 system_prompt_mode: native
+env:
+  ANTHROPIC_MODEL: "opus"
+  ANTHROPIC_SMALL_FAST_MODEL: "haiku"
 command:
   base: ["claude", "--no-chrome", "--dangerously-skip-permissions"]
   resume_flag: "--continue"
