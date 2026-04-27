@@ -307,7 +307,7 @@ var harnessConfigSyncCmd = &cobra.Command{
 			hubName = name
 		}
 
-		return syncHarnessConfigToHub(hubCtx, hubName, hcDir.Path, scope, hcDir.Config.Harness)
+		return syncHarnessConfigToHub(hubCtx, hubName, hcDir.Path, scope, "", hcDir.Config.Harness)
 	},
 }
 
@@ -516,7 +516,7 @@ var harnessConfigDeleteCmd = &cobra.Command{
 }
 
 // syncHarnessConfigToHub creates or updates a harness config in the Hub.
-func syncHarnessConfigToHub(hubCtx *HubContext, name, localPath, scope, harnessType string) error {
+func syncHarnessConfigToHub(hubCtx *HubContext, name, localPath, scope, scopeID, harnessType string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
@@ -543,9 +543,10 @@ func syncHarnessConfigToHub(hubCtx *HubContext, name, localPath, scope, harnessT
 	// Check if it already exists
 	var hcID string
 	existingResp, err := hubCtx.Client.HarnessConfigs().List(ctx, &hubclient.ListHarnessConfigsOptions{
-		Name:   name,
-		Scope:  scope,
-		Status: "active",
+		Name:    name,
+		Scope:   scope,
+		ScopeID: scopeID,
+		Status:  "active",
 	})
 	if err != nil {
 		return fmt.Errorf("failed to check for existing harness-config: %w", err)
@@ -614,6 +615,7 @@ func syncHarnessConfigToHub(hubCtx *HubContext, name, localPath, scope, harnessT
 			Name:    name,
 			Harness: harnessType,
 			Scope:   scope,
+			ScopeID: scopeID,
 		}
 
 		resp, err := hubCtx.Client.HarnessConfigs().Create(ctx, createReq)
@@ -823,6 +825,7 @@ func init() {
 	harnessConfigCmd.AddCommand(harnessConfigPullCmd)
 	harnessConfigCmd.AddCommand(harnessConfigShowCmd)
 	harnessConfigCmd.AddCommand(harnessConfigDeleteCmd)
+	harnessConfigCmd.AddCommand(harnessConfigInstallCmd)
 
 	// Flags for list command
 	harnessConfigListCmd.Flags().Bool("hub", false, "Include Hub results")

@@ -175,7 +175,7 @@ func TestSyncHarnessConfigToHub_FallsBackToHubFileAPIForLocalStorageURLs(t *test
 		Endpoint: server.URL,
 	}
 
-	err = syncHarnessConfigToHub(hubCtx, "codex", localPath, "global", "codex")
+	err = syncHarnessConfigToHub(hubCtx, "codex", localPath, "global", "", "codex")
 	require.NoError(t, err)
 	require.Contains(t, uploadedPaths, "config.yaml")
 }
