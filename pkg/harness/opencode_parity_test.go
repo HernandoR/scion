@@ -58,8 +58,9 @@ func TestOpenCodeEmbedsSeedRootSupportFiles(t *testing.T) {
 		t.Fatalf("expected opencode.json under home/.config/opencode/: %v", err)
 	}
 
-	// config.yaml at the root must be valid and declare the builtin provisioner
-	// — Phase 4 ships the script but does not flip the type until activation.
+	// config.yaml at the root must be valid and declare the container-script
+	// provisioner so the in-container provision.py runs during pre-start and
+	// handles MCP translation, auth, etc.
 	hc, err := config.LoadHarnessConfigDir(dir)
 	if err != nil {
 		t.Fatalf("LoadHarnessConfigDir: %v", err)
@@ -67,18 +68,20 @@ func TestOpenCodeEmbedsSeedRootSupportFiles(t *testing.T) {
 	if hc.Config.Provisioner == nil {
 		t.Fatal("expected provisioner block in seeded config.yaml")
 	}
-	if hc.Config.Provisioner.Type != "builtin" {
-		t.Errorf("provisioner.type=%q want builtin (script must opt in)", hc.Config.Provisioner.Type)
+	if hc.Config.Provisioner.Type != "container-script" {
+		t.Errorf("provisioner.type=%q want container-script", hc.Config.Provisioner.Type)
 	}
 	if len(hc.Config.Provisioner.Command) == 0 {
-		t.Error("expected provisioner.command to be staged for future activation")
+		t.Error("expected provisioner.command in config.yaml")
 	}
 }
 
-// TestOpenCodeActivateScriptFlipsProvisionerType ensures `harness-config
-// upgrade --activate-script opencode` flips the type and produces a backup of
-// the previous config.yaml. This is the operator-facing migration step.
-func TestOpenCodeActivateScriptFlipsProvisionerType(t *testing.T) {
+// TestOpenCodeActivateScriptIsIdempotent verifies that --activate-script is a
+// no-op when the embedded default already declares container-script. Existing
+// installations that upgraded before the default changed are still handled by
+// activateContainerScriptProvisioner, but freshly seeded configs must not
+// produce spurious backups.
+func TestOpenCodeActivateScriptIsIdempotent(t *testing.T) {
 	dir := seedOpenCodeDir(t)
 
 	plan, err := config.UpgradeHarnessConfig(dir, &OpenCode{}, config.HarnessConfigUpgradeOptions{
@@ -88,8 +91,8 @@ func TestOpenCodeActivateScriptFlipsProvisionerType(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UpgradeHarnessConfig --activate-script: %v", err)
 	}
-	if !plan.Changed {
-		t.Fatal("expected activation to change config")
+	if plan.Changed {
+		t.Fatalf("expected no change (already container-script), got actions: %v", plan.Actions)
 	}
 
 	hc, err := config.LoadHarnessConfigDir(dir)
@@ -97,10 +100,10 @@ func TestOpenCodeActivateScriptFlipsProvisionerType(t *testing.T) {
 		t.Fatalf("LoadHarnessConfigDir after activate: %v", err)
 	}
 	if hc.Config.Provisioner == nil || hc.Config.Provisioner.Type != "container-script" {
-		t.Fatalf("provisioner.type after activate=%q want container-script", hc.Config.Provisioner.Type)
+		t.Fatalf("provisioner.type=%q want container-script", hc.Config.Provisioner.Type)
 	}
-	if len(plan.Backups) != 1 {
-		t.Fatalf("expected one backup, got %v", plan.Backups)
+	if len(plan.Backups) != 0 {
+		t.Fatalf("expected no backups for idempotent activate, got %v", plan.Backups)
 	}
 }
 
@@ -111,12 +114,6 @@ func TestOpenCodeActivateScriptFlipsProvisionerType(t *testing.T) {
 func TestOpenCodeContainerScriptHarnessParity(t *testing.T) {
 	dir := seedOpenCodeDir(t)
 
-	// Activate script so NewContainerScriptHarness accepts the entry.
-	if _, err := config.UpgradeHarnessConfig(dir, &OpenCode{}, config.HarnessConfigUpgradeOptions{
-		ActivateScript: true,
-	}); err != nil {
-		t.Fatalf("activate script: %v", err)
-	}
 	hc, err := config.LoadHarnessConfigDir(dir)
 	if err != nil {
 		t.Fatalf("LoadHarnessConfigDir: %v", err)
@@ -193,11 +190,7 @@ func TestOpenCodeContainerScriptHarnessParity(t *testing.T) {
 // hook actually runs.
 func TestOpenCodeContainerScriptHarnessStagesScript(t *testing.T) {
 	dir := seedOpenCodeDir(t)
-	if _, err := config.UpgradeHarnessConfig(dir, &OpenCode{}, config.HarnessConfigUpgradeOptions{
-		ActivateScript: true,
-	}); err != nil {
-		t.Fatalf("activate script: %v", err)
-	}
+
 	hc, err := config.LoadHarnessConfigDir(dir)
 	if err != nil {
 		t.Fatalf("LoadHarnessConfigDir: %v", err)
@@ -577,11 +570,7 @@ func TestOpenCodeProvisionScript_Integration_NoCreds(t *testing.T) {
 // This protects callers like applyResolvedAuth that branch on Method.
 func TestOpenCodeContainerScriptResolveAuthShape(t *testing.T) {
 	dir := seedOpenCodeDir(t)
-	if _, err := config.UpgradeHarnessConfig(dir, &OpenCode{}, config.HarnessConfigUpgradeOptions{
-		ActivateScript: true,
-	}); err != nil {
-		t.Fatalf("activate: %v", err)
-	}
+
 	hc, err := config.LoadHarnessConfigDir(dir)
 	if err != nil {
 		t.Fatal(err)

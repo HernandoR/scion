@@ -15,11 +15,12 @@
 harness: opencode
 image: scion-opencode:latest
 user: scion
-# provisioner.type defaults to "builtin" so the compiled OpenCode harness keeps
-# running unchanged. Run `scion harness-config upgrade opencode --activate-script`
-# to flip this to container-script after reviewing the staged provision.py.
+# provisioner.type is container-script so the container-side provision.py
+# handles auth resolution, MCP server translation, and other harness-native
+# config writes. Existing installations that still have type: builtin can
+# run `scion harness-config upgrade opencode --activate-script` to migrate.
 provisioner:
-  type: builtin
+  type: container-script
   interface_version: 1
   command: ["python3", "/home/scion/.scion/harness/provision.py"]
   timeout: 30s
