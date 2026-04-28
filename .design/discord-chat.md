@@ -27,10 +27,10 @@ Discord's architecture differs from both Google Chat and Slack in important ways
 
 - Discord voice channel integration
 - Discord Stage channel support
-- Discord Forum channel support (threads-only channels)
+- Discord Forum channel support (threads-only channels) — regular text channel + thread-per-notification is sufficient for MVP; Forum channels could be revisited as a cleaner organized surface later
 - Discord AutoMod integration
 - Custom Discord Activities (Rich Presence)
-- Sharding for large-scale deployments (>2,500 guilds)
+- Sharding for large-scale deployments (>2,500 guilds) — Scion's bot is self-hosted per team, not a public distributed bot
 - File/attachment relay to agents
 - OAuth2 user authorization flow for email retrieval
 
@@ -1901,7 +1901,7 @@ The `discordgo` library does not include a test server, but the adapter's event 
 
 3. **Per-agent identity: Channel webhooks.** Discord bots have fixed identity. Channel webhooks allow custom `username` and `avatar_url` per message, achieving the same effect as Slack's `chat:write.customize`. One webhook per channel is created lazily and cached.
 
-4. **User email: Not available.** Discord's bot API does not expose user email. Auto-registration by email is not possible. The device auth flow is the primary registration path. This is a known UX difference from Google Chat and Slack that should be documented for users.
+4. **User email: Not available; device auth is the only registration path.** Discord's bot API does not expose user email. Auto-registration by email is not possible, and no OAuth2 workaround will be implemented. Users run `/scion register`, receive a device code and Hub URL, complete the flow in the browser, and the Discord–Hub mapping is created. This is the sole registration path.
 
 5. **Modal limitations: Two-phase approach.** Discord modals only support text inputs. Select/checkbox dialog fields are rendered as message components (select menus, buttons) outside the modal. For the chat app's current dialog flows, this is not a significant limitation.
 
@@ -1913,6 +1913,8 @@ The `discordgo` library does not include a test server, but the adapter's event 
 
 9. **Guild vs. channel linking: Channel-level.** Consistent with Slack's channel-level linking. A guild can have multiple channels linked to different groves.
 
+13. **Authorization: Hub-based permissions only.** The Hub is the authoritative source for who can perform agent operations. The only Discord-native check is `MANAGE_GUILD` for channel-level admin commands (`link`, `unlink`, `broadcast`). No Discord role mapping is implemented.
+
 10. **Agent icon generation:** Reuses the `IconProvider` abstraction from the Slack adapter with `robohashProvider` default, using 128x128 images (Discord's recommended minimum for webhook avatars).
 
 11. **Ephemeral messages: Native support.** Discord's `MessageFlagsEphemeral` maps directly to the visibility requirements for `help`, `info`, `register`, and `unregister` commands. No workaround needed (unlike Google Chat which has no ephemeral message concept).
@@ -1921,10 +1923,4 @@ The `discordgo` library does not include a test server, but the adapter's event 
 
 ## Open Questions
 
-1. **Discord OAuth2 for email:** Should the adapter support an optional OAuth2 authorization flow to retrieve user emails for auto-registration? This would require hosting an OAuth2 callback endpoint, managing authorization codes, and storing access tokens. The device auth flow works without this, but email-based auto-registration is significantly smoother UX. This could be a Phase 4d enhancement.
-
-2. **Forum channel support:** Discord Forum channels are thread-only channels where every post creates a new thread. These could be a natural fit for per-agent notification channels (one forum channel per grove, one thread per agent or notification). Should this be explored as an alternative to thread-per-notification in regular channels?
-
-3. **Discord role integration:** Discord has a rich role system. Should grove admin/agent operator roles map to Discord roles for authorization checks, beyond the current Hub-based permission model? This would allow guild admins to manage Scion access via Discord's native role UI.
-
-4. **Sharding:** Discord requires bot sharding for applications in >2,500 guilds. The current design assumes a single shard. If Scion's Discord bot is expected to serve many guilds, the adapter would need to support Discord's gateway sharding protocol. This is likely a future concern.
+_None at this time._
