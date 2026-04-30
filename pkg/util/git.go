@@ -604,10 +604,22 @@ func CloneSharedWorkspace(workspacePath, cloneURL, branch, token string) error {
 	return nil
 }
 
+// PullCommitInfo describes a single commit that was pulled.
+type PullCommitInfo struct {
+	Hash    string `json:"hash"`
+	Subject string `json:"subject"`
+}
+
+// PullResult contains the structured result of a git pull operation.
+type PullResult struct {
+	Updated bool             `json:"updated"`
+	Commits []PullCommitInfo `json:"commits,omitempty"`
+}
+
 // PullSharedWorkspace runs `git pull` in the specified workspace path to update
 // it from the remote. It optionally uses a token for authentication and sanitizes
-// credentials from error output.
-func PullSharedWorkspace(workspacePath, token string) (string, error) {
+// credentials from error output. Returns structured commit information.
+func PullSharedWorkspace(workspacePath, token string) (*PullResult, error) {
 	env := append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 
 	// If a token is provided, configure a temporary credential helper via env
@@ -621,6 +633,10 @@ func PullSharedWorkspace(workspacePath, token string) (string, error) {
 		)
 	}
 
+	// Capture HEAD before pulling so we can enumerate new commits afterward.
+	oldHead, _ := exec.Command("git", "-C", workspacePath, "rev-parse", "HEAD").Output()
+	oldHeadStr := strings.TrimSpace(string(oldHead))
+
 	cmd := exec.Command("git", "-C", workspacePath, "pull", "--ff-only")
 	cmd.Env = env
 	output, err := cmd.CombinedOutput()
@@ -628,11 +644,43 @@ func PullSharedWorkspace(workspacePath, token string) (string, error) {
 	if err != nil {
 		gitErr := ClassifyGitError(sanitized)
 		if guidance := gitErr.UserGuidance(); guidance != "" {
-			return "", &GitError{Kind: gitErr.Kind, Message: fmt.Sprintf("git pull failed: %s (%s)", sanitized, guidance)}
+			return nil, &GitError{Kind: gitErr.Kind, Message: fmt.Sprintf("git pull failed: %s (%s)", sanitized, guidance)}
 		}
-		return "", &GitError{Kind: gitErr.Kind, Message: fmt.Sprintf("git pull failed: %s", sanitized)}
+		return nil, &GitError{Kind: gitErr.Kind, Message: fmt.Sprintf("git pull failed: %s", sanitized)}
 	}
-	return sanitized, nil
+
+	newHead, _ := exec.Command("git", "-C", workspacePath, "rev-parse", "HEAD").Output()
+	newHeadStr := strings.TrimSpace(string(newHead))
+
+	result := &PullResult{}
+	if oldHeadStr == "" || newHeadStr == "" || oldHeadStr == newHeadStr {
+		return result, nil
+	}
+
+	result.Updated = true
+
+	logCmd := exec.Command("git", "-C", workspacePath, "log", "--oneline", "--no-decorate",
+		oldHeadStr+".."+newHeadStr)
+	logOut, err := logCmd.Output()
+	if err != nil {
+		return result, nil
+	}
+
+	lines := strings.Split(strings.TrimSpace(string(logOut)), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, " ", 2)
+		info := PullCommitInfo{Hash: parts[0]}
+		if len(parts) > 1 {
+			info.Subject = parts[1]
+		}
+		result.Commits = append(result.Commits, info)
+	}
+
+	return result, nil
 }
 
 // gitConfig sets a git config value in the specified repository.

@@ -691,12 +691,12 @@ func TestPullSharedWorkspace(t *testing.T) {
 	}
 
 	t.Run("PullNoChanges", func(t *testing.T) {
-		output, err := PullSharedWorkspace(cloneDir, "")
+		result, err := PullSharedWorkspace(cloneDir, "")
 		if err != nil {
 			t.Fatalf("Pull failed: %v", err)
 		}
-		if !strings.Contains(output, "Already up to date") {
-			t.Logf("Unexpected output (not an error): %q", output)
+		if result.Updated {
+			t.Error("expected Updated=false when already up to date")
 		}
 	})
 
@@ -716,12 +716,18 @@ func TestPullSharedWorkspace(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		output, err := PullSharedWorkspace(cloneDir, "")
+		result, err := PullSharedWorkspace(cloneDir, "")
 		if err != nil {
 			t.Fatalf("Pull failed: %v", err)
 		}
-		if output == "" {
-			t.Error("expected non-empty output")
+		if !result.Updated {
+			t.Error("expected Updated=true after pull with new commits")
+		}
+		if len(result.Commits) == 0 {
+			t.Error("expected at least one commit in result")
+		}
+		if len(result.Commits) > 0 && result.Commits[0].Subject != "add new file" {
+			t.Errorf("expected commit subject %q, got %q", "add new file", result.Commits[0].Subject)
 		}
 
 		// Verify the new file was pulled

@@ -124,7 +124,12 @@ export class ScionPageGroveDetail extends LitElement {
    * Result of the last git pull operation
    */
   @state()
-  private pullResult: { status: string; output?: string; error?: string } | null = null;
+  private pullResult: {
+    status: string;
+    updated?: boolean;
+    commits?: { hash: string; subject: string }[];
+    error?: string;
+  } | null = null;
 
   /**
    * Whether the messages section is expanded (lazy-load trigger)
@@ -564,6 +569,20 @@ export class ScionPageGroveDetail extends LitElement {
       vertical-align: bottom;
     }
 
+    .pull-commits {
+      margin-top: 0.375rem;
+      max-height: 8rem;
+      overflow-y: auto;
+      font-family: var(--sl-font-mono, monospace);
+      line-height: 1.5;
+      color: var(--scion-text, #1e293b);
+    }
+
+    .pull-commits .commit-hash {
+      color: var(--sl-color-primary-600, #2563eb);
+      margin-right: 0.375rem;
+    }
+
     @media (max-width: 768px) {
       .hide-mobile {
         display: none;
@@ -975,7 +994,7 @@ export class ScionPageGroveDetail extends LitElement {
         return;
       }
 
-      this.pullResult = { status: 'ok', output: result.output };
+      this.pullResult = { status: 'ok', updated: result.updated, commits: result.commits };
       // Refresh file list after pull
       this.refreshActiveFileBrowser();
     } catch (err) {
@@ -1084,7 +1103,16 @@ export class ScionPageGroveDetail extends LitElement {
             >
               <sl-icon slot="icon" name=${this.pullResult.status === 'ok' ? 'check-circle' : 'exclamation-triangle'}></sl-icon>
               ${this.pullResult.status === 'ok'
-                ? (this.pullResult.output || 'Pull completed successfully.')
+                ? this.pullResult.updated && this.pullResult.commits && this.pullResult.commits.length > 0
+                  ? html`
+                      Pulled ${this.pullResult.commits.length} commit${this.pullResult.commits.length === 1 ? '' : 's'}
+                      <div class="pull-commits">
+                        ${this.pullResult.commits.map(
+                          (c) => html`<div><span class="commit-hash">${c.hash}</span>${c.subject}</div>`,
+                        )}
+                      </div>
+                    `
+                  : 'Already up to date.'
                 : (this.pullResult.error || 'Pull failed.')}
             </sl-alert>
           `

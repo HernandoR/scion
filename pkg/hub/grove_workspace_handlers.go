@@ -857,7 +857,7 @@ func (s *Server) handleGroveWorkspacePull(w http.ResponseWriter, r *http.Request
 
 	token := s.resolveCloneToken(ctx, grove)
 
-	output, err := util.PullSharedWorkspace(workspacePath, token)
+	pullResult, err := util.PullSharedWorkspace(workspacePath, token)
 	if err != nil {
 		slog.Warn("shared workspace pull failed",
 			"grove_id", grove.ID, "error", err.Error())
@@ -881,9 +881,14 @@ func (s *Server) handleGroveWorkspacePull(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]string{
-		"status": "ok",
-		"output": output,
+	writeJSON(w, http.StatusOK, struct {
+		Status  string                `json:"status"`
+		Updated bool                  `json:"updated"`
+		Commits []util.PullCommitInfo `json:"commits,omitempty"`
+	}{
+		Status:  "ok",
+		Updated: pullResult.Updated,
+		Commits: pullResult.Commits,
 	})
 }
 
