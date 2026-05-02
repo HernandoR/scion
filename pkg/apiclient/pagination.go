@@ -41,6 +41,9 @@ func (p *PageOptions) ToQuery(q url.Values) url.Values {
 	if q == nil {
 		q = url.Values{}
 	}
+	if p == nil {
+		return q
+	}
 	if p.Limit > 0 {
 		q.Set("limit", strconv.Itoa(p.Limit))
 	}
