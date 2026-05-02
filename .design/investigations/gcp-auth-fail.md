@@ -1,6 +1,6 @@
 # Investigation: GCP Auth Token Failure on Hub Host
 
-**Status:** Open — primary hypothesis not confirmed by iptables diagnostics  
+**Status:** Resolved — Hypothesis 1 confirmed. See [post-mortem](../post-mortems/2026-05-01-metadata-server-502.md).  
 **Date:** 2026-05-01  
 **Symptom:** Hub host unable to obtain GCP access token for its own service account. The real GCP metadata server at `169.254.169.254` returns (or appears to return) `502 Bad Gateway` with body `"token generation failed"` after a 30-second timeout.
 
@@ -74,12 +74,7 @@ curl -s -H "Metadata-Flavor: Google" \
 
 ### Status
 
-**Not confirmed.** Running the diagnostic commands on the host did not show leaked iptables rules at the time of investigation. This could mean:
-- The rules were already cleaned up (containers restarted or stopped)
-- The containers were not using host networking at the time
-- The root cause is something else
-
-The hypothesis remains plausible for future occurrences — the code path exists and is unguarded.
+**Confirmed 2026-05-02.** Running diagnostics on a reproduced instance showed the REDIRECT rule present in the host's nat OUTPUT chain. Removing it immediately restored metadata access. The initial investigation likely missed it because the affected containers had been restarted by the time diagnostics ran, cleaning up the rule. Fix landed in commit `af759428`.
 
 ## Hypothesis 2: Token caching thundering herd (secondary)
 
