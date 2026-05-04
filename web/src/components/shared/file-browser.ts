@@ -125,7 +125,7 @@ export class WorkspaceFileBrowserDataSource implements FileBrowserDataSource {
   async searchFiles(query: string, limit?: number, signal?: AbortSignal): Promise<FileListResult> {
     const params = new URLSearchParams({ q: query });
     if (limit !== undefined) params.set('limit', String(limit));
-    const response = await apiFetch(`${this.basePath}?${params}`, { signal });
+    const response = await apiFetch(`${this.basePath}?${params}`, { signal: signal ?? null });
     if (!response.ok) {
       throw new Error(await extractApiError(response, `HTTP ${response.status}`));
     }
@@ -193,7 +193,7 @@ export class SharedDirFileBrowserDataSource implements FileBrowserDataSource {
   async searchFiles(query: string, limit?: number, signal?: AbortSignal): Promise<FileListResult> {
     const params = new URLSearchParams({ q: query });
     if (limit !== undefined) params.set('limit', String(limit));
-    const response = await apiFetch(`${this.basePath}?${params}`, { signal });
+    const response = await apiFetch(`${this.basePath}?${params}`, { signal: signal ?? null });
     if (!response.ok) {
       throw new Error(await extractApiError(response, `HTTP ${response.status}`));
     }
