@@ -41,13 +41,12 @@ func NewNotificationRelay(store *state.Store, messenger Messenger, log *slog.Log
 }
 
 // HandleBrokerMessage processes a message received via the broker plugin's Publish() path.
-// This is the primary notification delivery path.
+// Only user-targeted messages (from explicit "scion message" commands) are relayed
+// to chat. All other topics are dropped to prevent harness output leaking into chat.
 //
-// Topics follow the broker topic hierarchy with a "scion." prefix:
+// Expected topic:
 //
 //	scion.grove.<groveID>.user.<userID>.messages  — user-targeted message
-//	scion.grove.<groveID>.agent.<slug>.messages   — agent notification
-//	scion.grove.<groveID>.broadcast               — grove broadcast
 func (n *NotificationRelay) HandleBrokerMessage(ctx context.Context, topic string, msg *messages.StructuredMessage) error {
 	// Strip the "scion." prefix used by the broker topic hierarchy.
 	normalized := strings.TrimPrefix(topic, "scion.")
@@ -58,21 +57,16 @@ func (n *NotificationRelay) HandleBrokerMessage(ctx context.Context, topic strin
 		return nil
 	}
 
-	switch {
-	case parts[0] == "grove" && len(parts) >= 5 && parts[2] == "user":
-		// User-targeted message: "grove.<groveID>.user.<userID>.messages"
+	// Only relay user-targeted messages (from explicit "scion message"
+	// commands). All other topics (agent-to-agent, broadcasts, etc.) are
+	// dropped so that harness terminal output does not leak into chat.
+	if parts[0] == "grove" && len(parts) >= 5 && parts[2] == "user" {
 		groveID := parts[1]
 		return n.handleUserMessage(ctx, groveID, msg)
-
-	case parts[0] == "grove" && len(parts) >= 4:
-		groveID := parts[1]
-		// Agent notification: "grove.<groveID>.agent.<slug>.messages" or similar
-		return n.handleAgentNotification(ctx, groveID, msg)
-
-	default:
-		n.log.Debug("ignoring unrecognized topic", "topic", topic)
-		return nil
 	}
+
+	n.log.Debug("ignoring non-user-targeted topic", "topic", topic)
+	return nil
 }
 
 // handleAgentNotification renders an agent status notification as a card in linked spaces.
@@ -125,6 +119,15 @@ func (n *NotificationRelay) handleUserMessage(ctx context.Context, groveID strin
 	if msg.RecipientID == "" {
 		n.log.Debug("user message has no recipient ID, skipping relay")
 		return nil
+	}
+
+	if msg.Type != messages.TypeInstruction {
+		n.log.Debug("routing non-instruction user message to notification path",
+			"type", msg.Type,
+			"sender", msg.Sender,
+			"recipient_id", msg.RecipientID,
+		)
+		return n.handleAgentNotification(ctx, groveID, msg)
 	}
 
 	// Look up the chat platform user for this Hub user

@@ -122,6 +122,7 @@ type StreamOpenMessage struct {
 	StreamID   string `json:"streamId"`
 	StreamType string `json:"streamType"` // "pty", "events", "logs"
 	Slug       string `json:"slug,omitempty"`
+	GroveID    string `json:"groveId,omitempty"`
 	Cols       int    `json:"cols,omitempty"` // For PTY streams
 	Rows       int    `json:"rows,omitempty"` // For PTY streams
 }
@@ -275,12 +276,13 @@ func NewResponseEnvelope(requestID string, statusCode int, headers map[string]st
 }
 
 // NewStreamOpenMessage creates a stream open request.
-func NewStreamOpenMessage(streamID, streamType, slug string, cols, rows int) *StreamOpenMessage {
+func NewStreamOpenMessage(streamID, streamType, slug, groveID string, cols, rows int) *StreamOpenMessage {
 	return &StreamOpenMessage{
 		Type:       TypeStreamOpen,
 		StreamID:   streamID,
 		StreamType: streamType,
 		Slug:       slug,
+		GroveID:    groveID,
 		Cols:       cols,
 		Rows:       rows,
 	}

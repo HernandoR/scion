@@ -43,23 +43,24 @@ type MessageBuffer struct {
 	bufferDelay time.Duration
 
 	// deliverFunc is the callback that performs actual message delivery via tmux.
-	// It receives the agent ID, the concatenated message text, and the interrupt flag.
-	deliverFunc func(agentID string, message string, interrupt bool) error
+	// It receives the agent ID, grove ID, the concatenated message text, and the interrupt flag.
+	deliverFunc func(agentID, groveID string, message string, interrupt bool) error
 
 	mu      sync.Mutex
-	buffers map[string]*agentBuffer // keyed by agent ID
+	buffers map[string]*agentBuffer // keyed by agentID + "\x00" + groveID
 }
 
 // agentBuffer holds the pending messages and timer for a single agent.
 type agentBuffer struct {
 	messages []string    // accumulated messages waiting for delivery
 	timer    *time.Timer // debounce timer; fires to trigger delivery
+	groveID  string      // grove scope for delivery
 }
 
 // NewMessageBuffer creates a new MessageBuffer with the given debounce delay
 // and delivery function. The deliverFunc is called asynchronously when the
 // buffer flushes — it should perform the actual tmux send-keys delivery.
-func NewMessageBuffer(delay time.Duration, deliverFunc func(agentID string, message string, interrupt bool) error) *MessageBuffer {
+func NewMessageBuffer(delay time.Duration, deliverFunc func(agentID, groveID string, message string, interrupt bool) error) *MessageBuffer {
 	return &MessageBuffer{
 		bufferDelay: delay,
 		deliverFunc: deliverFunc,
@@ -71,20 +72,21 @@ func NewMessageBuffer(delay time.Duration, deliverFunc func(agentID string, mess
 // The message is added to the agent's buffer and the debounce timer is
 // started (or reset if already running). The actual delivery occurs
 // asynchronously once the timer fires.
-func (mb *MessageBuffer) Send(agentID string, message string) {
+// groveID scopes delivery to a specific grove.
+func (mb *MessageBuffer) Send(agentID, groveID string, message string) {
 	mb.mu.Lock()
 	defer mb.mu.Unlock()
 
-	buf, exists := mb.buffers[agentID]
+	key := bufferKey(agentID, groveID)
+	buf, exists := mb.buffers[key]
 	if !exists {
-		// First message for this agent — create a new buffer entry.
-		buf = &agentBuffer{}
-		mb.buffers[agentID] = buf
+		buf = &agentBuffer{groveID: groveID}
+		mb.buffers[key] = buf
 	}
 
 	// Append the message to the pending list.
 	buf.messages = append(buf.messages, message)
-	util.Debugf("msgbuffer: queued message for agent %s (%d pending)", agentID, len(buf.messages))
+	util.Debugf("msgbuffer: queued message for agent %s grove %s (%d pending)", agentID, groveID, len(buf.messages))
 
 	// Reset or start the debounce timer. If a timer is already running,
 	// stop it first so we can restart with a fresh delay window.
@@ -92,15 +94,19 @@ func (mb *MessageBuffer) Send(agentID string, message string) {
 		buf.timer.Stop()
 	}
 	buf.timer = time.AfterFunc(mb.bufferDelay, func() {
-		mb.flush(agentID)
+		mb.flush(agentID, key)
 	})
+}
+
+func bufferKey(agentID, groveID string) string {
+	return agentID + "\x00" + groveID
 }
 
 // flush delivers all buffered messages for the given agent as a single
 // concatenated string. Called when the debounce timer fires.
-func (mb *MessageBuffer) flush(agentID string) {
+func (mb *MessageBuffer) flush(agentID, key string) {
 	mb.mu.Lock()
-	buf, exists := mb.buffers[agentID]
+	buf, exists := mb.buffers[key]
 	if !exists || len(buf.messages) == 0 {
 		mb.mu.Unlock()
 		return
@@ -108,20 +114,19 @@ func (mb *MessageBuffer) flush(agentID string) {
 
 	// Take ownership of the pending messages and clean up the buffer entry.
 	pending := buf.messages
-	delete(mb.buffers, agentID)
+	groveID := buf.groveID
+	delete(mb.buffers, key)
 	mb.mu.Unlock()
 
 	// Concatenate all buffered messages with double-newline separators so
 	// each original message remains visually distinct in the agent's input.
 	combined := strings.Join(pending, "\n\n")
-	util.Debugf("msgbuffer: flushing %d message(s) for agent %s", len(pending), agentID)
+	util.Debugf("msgbuffer: flushing %d message(s) for agent %s grove %s", len(pending), agentID, groveID)
 
-	if err := mb.deliverFunc(agentID, combined, false); err != nil {
-		// Delivery errors are logged rather than returned since flush runs
-		// asynchronously after the original Send() call has already returned.
-		// Log at warn level so failures are visible in production logs.
+	if err := mb.deliverFunc(agentID, groveID, combined, false); err != nil {
 		slog.Warn("msgbuffer: message delivery failed",
 			"agent_id", agentID,
+			"grove_id", groveID,
 			"pending_count", len(pending),
 			"error", err,
 		)
@@ -132,17 +137,25 @@ func (mb *MessageBuffer) flush(agentID string) {
 // Call this during shutdown to ensure no messages are lost.
 func (mb *MessageBuffer) Close() {
 	mb.mu.Lock()
-	agentIDs := make([]string, 0, len(mb.buffers))
-	for id, buf := range mb.buffers {
+	type pendingEntry struct {
+		agentID string
+		key     string
+	}
+	entries := make([]pendingEntry, 0, len(mb.buffers))
+	for key, buf := range mb.buffers {
 		if buf.timer != nil {
 			buf.timer.Stop()
 		}
-		agentIDs = append(agentIDs, id)
+		agentID := key
+		if idx := strings.IndexByte(key, '\x00'); idx >= 0 {
+			agentID = key[:idx]
+		}
+		entries = append(entries, pendingEntry{agentID: agentID, key: key})
 	}
 	mb.mu.Unlock()
 
 	// Flush each agent's pending messages outside the lock.
-	for _, id := range agentIDs {
-		mb.flush(id)
+	for _, e := range entries {
+		mb.flush(e.agentID, e.key)
 	}
 }

@@ -51,13 +51,13 @@ func TestMessage(t *testing.T) {
 		Runtime: mockRT,
 	}
 	// Initialize buffer (not used for interrupt messages, but needed to avoid nil).
-	mgr.msgBuffer = NewMessageBuffer(100*time.Millisecond, func(agentID, message string, interrupt bool) error {
-		return mgr.deliverImmediate(context.Background(), agentID, message, interrupt)
+	mgr.msgBuffer = NewMessageBuffer(100*time.Millisecond, func(agentID, groveID, message string, interrupt bool) error {
+		return mgr.deliverImmediate(context.Background(), agentID, groveID, message, interrupt)
 	})
 	defer mgr.msgBuffer.Close()
 
 	ctx := context.Background()
-	err := mgr.Message(ctx, "test-agent", "hello world", true)
+	err := mgr.Message(ctx, "test-agent", "", "hello world", true)
 	if err != nil {
 		t.Fatalf("Message failed: %v", err)
 	}
@@ -123,19 +123,19 @@ func TestBroadcast(t *testing.T) {
 		Runtime: mockRT,
 	}
 	// Use a short buffer delay for testing.
-	mgr.msgBuffer = NewMessageBuffer(100*time.Millisecond, func(agentID, message string, interrupt bool) error {
-		return mgr.deliverImmediate(context.Background(), agentID, message, interrupt)
+	mgr.msgBuffer = NewMessageBuffer(100*time.Millisecond, func(agentID, groveID, message string, interrupt bool) error {
+		return mgr.deliverImmediate(context.Background(), agentID, groveID, message, interrupt)
 	})
 	defer mgr.msgBuffer.Close()
 
 	ctx := context.Background()
 	// Broadcast is handled by CLI loop usually, but let's test mgr.Message on both.
 	// Non-interrupt messages are buffered and delivered after the debounce window.
-	err := mgr.Message(ctx, "test-agent-1", "hello", false)
+	err := mgr.Message(ctx, "test-agent-1", "", "hello", false)
 	if err != nil {
 		t.Fatalf("Message 1 failed: %v", err)
 	}
-	err = mgr.Message(ctx, "test-agent-2", "hello", false)
+	err = mgr.Message(ctx, "test-agent-2", "", "hello", false)
 	if err != nil {
 		t.Fatalf("Message 2 failed: %v", err)
 	}
@@ -208,13 +208,13 @@ func TestMessageRaw(t *testing.T) {
 	mgr := &AgentManager{
 		Runtime: mockRT,
 	}
-	mgr.msgBuffer = NewMessageBuffer(100*time.Millisecond, func(agentID, message string, interrupt bool) error {
-		return mgr.deliverImmediate(context.Background(), agentID, message, interrupt)
+	mgr.msgBuffer = NewMessageBuffer(100*time.Millisecond, func(agentID, groveID, message string, interrupt bool) error {
+		return mgr.deliverImmediate(context.Background(), agentID, groveID, message, interrupt)
 	})
 	defer mgr.msgBuffer.Close()
 
 	ctx := context.Background()
-	err := mgr.MessageRaw(ctx, "test-agent", "Escape")
+	err := mgr.MessageRaw(ctx, "test-agent", "", "Escape")
 	if err != nil {
 		t.Fatalf("MessageRaw failed: %v", err)
 	}

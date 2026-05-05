@@ -88,11 +88,21 @@ If the agent was started with tmux support, this will attach to the tmux session
 
 		rt := runtime.GetRuntime(targetGrovePath, profile)
 
+		// Use grove-scoped lookup to find the exact container,
+		// preventing cross-grove collision when agents share a name.
+		filter := map[string]string{"scion.name": agentName, "scion.grove": groveName}
+		agents, listErr := rt.List(context.Background(), filter)
+		attachID := agentName
+		if listErr == nil && len(agents) > 0 {
+			attachID = agents[0].ContainerID
+		}
+
 		fmt.Printf("Attaching to agent '%s' (grove: %s)...\n", agentName, groveName)
-		err = rt.Attach(context.Background(), agentName)
+		err = rt.Attach(context.Background(), attachID)
 		if err != nil {
 			// If the error is "not found", we can augment it with grove info
-			if err.Error() == fmt.Sprintf("agent '%s' not found", agentName) {
+			if err.Error() == fmt.Sprintf("agent '%s' not found", attachID) ||
+				err.Error() == fmt.Sprintf("agent '%s' container not found. It may have exited and been removed.", attachID) {
 				return fmt.Errorf("agent '%s' not found in grove '%s'", agentName, groveName)
 			}
 			return err

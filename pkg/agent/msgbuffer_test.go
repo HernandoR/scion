@@ -24,6 +24,7 @@ import (
 // deliveryRecord captures a single call to the delivery function.
 type deliveryRecord struct {
 	agentID   string
+	groveID   string
 	message   string
 	interrupt bool
 }
@@ -34,16 +35,16 @@ func TestMessageBuffer_SingleMessage(t *testing.T) {
 	var deliveries []deliveryRecord
 	done := make(chan struct{}, 1)
 
-	buf := NewMessageBuffer(100*time.Millisecond, func(agentID, message string, interrupt bool) error {
+	buf := NewMessageBuffer(100*time.Millisecond, func(agentID, groveID, message string, interrupt bool) error {
 		mu.Lock()
-		deliveries = append(deliveries, deliveryRecord{agentID, message, interrupt})
+		deliveries = append(deliveries, deliveryRecord{agentID, groveID, message, interrupt})
 		mu.Unlock()
 		done <- struct{}{}
 		return nil
 	})
 	defer buf.Close()
 
-	buf.Send("agent-1", "hello")
+	buf.Send("agent-1", "grove-a", "hello")
 
 	select {
 	case <-done:
@@ -59,6 +60,9 @@ func TestMessageBuffer_SingleMessage(t *testing.T) {
 	if deliveries[0].agentID != "agent-1" {
 		t.Errorf("expected agent-1, got %s", deliveries[0].agentID)
 	}
+	if deliveries[0].groveID != "grove-a" {
+		t.Errorf("expected grove-a, got %s", deliveries[0].groveID)
+	}
 	if deliveries[0].message != "hello" {
 		t.Errorf("expected 'hello', got %q", deliveries[0].message)
 	}
@@ -71,9 +75,9 @@ func TestMessageBuffer_CoalescesRapidMessages(t *testing.T) {
 	var deliveries []deliveryRecord
 	done := make(chan struct{}, 1)
 
-	buf := NewMessageBuffer(200*time.Millisecond, func(agentID, message string, interrupt bool) error {
+	buf := NewMessageBuffer(200*time.Millisecond, func(agentID, groveID, message string, interrupt bool) error {
 		mu.Lock()
-		deliveries = append(deliveries, deliveryRecord{agentID, message, interrupt})
+		deliveries = append(deliveries, deliveryRecord{agentID, groveID, message, interrupt})
 		mu.Unlock()
 		done <- struct{}{}
 		return nil
@@ -81,11 +85,11 @@ func TestMessageBuffer_CoalescesRapidMessages(t *testing.T) {
 	defer buf.Close()
 
 	// Send three messages in rapid succession — all within the 200ms window.
-	buf.Send("agent-1", "msg-1")
+	buf.Send("agent-1", "grove-a", "msg-1")
 	time.Sleep(50 * time.Millisecond)
-	buf.Send("agent-1", "msg-2")
+	buf.Send("agent-1", "grove-a", "msg-2")
 	time.Sleep(50 * time.Millisecond)
-	buf.Send("agent-1", "msg-3")
+	buf.Send("agent-1", "grove-a", "msg-3")
 
 	select {
 	case <-done:
@@ -111,17 +115,17 @@ func TestMessageBuffer_SeparateAgents(t *testing.T) {
 	var deliveries []deliveryRecord
 	done := make(chan struct{}, 2)
 
-	buf := NewMessageBuffer(100*time.Millisecond, func(agentID, message string, interrupt bool) error {
+	buf := NewMessageBuffer(100*time.Millisecond, func(agentID, groveID, message string, interrupt bool) error {
 		mu.Lock()
-		deliveries = append(deliveries, deliveryRecord{agentID, message, interrupt})
+		deliveries = append(deliveries, deliveryRecord{agentID, groveID, message, interrupt})
 		mu.Unlock()
 		done <- struct{}{}
 		return nil
 	})
 	defer buf.Close()
 
-	buf.Send("agent-1", "for-agent-1")
-	buf.Send("agent-2", "for-agent-2")
+	buf.Send("agent-1", "grove-a", "for-agent-1")
+	buf.Send("agent-2", "grove-a", "for-agent-2")
 
 	// Wait for both deliveries.
 	for i := 0; i < 2; i++ {
@@ -151,6 +155,50 @@ func TestMessageBuffer_SeparateAgents(t *testing.T) {
 	}
 }
 
+func TestMessageBuffer_SameAgentDifferentGroves(t *testing.T) {
+	// Same agent slug in different groves should be buffered independently.
+	var mu sync.Mutex
+	var deliveries []deliveryRecord
+	done := make(chan struct{}, 2)
+
+	buf := NewMessageBuffer(100*time.Millisecond, func(agentID, groveID, message string, interrupt bool) error {
+		mu.Lock()
+		deliveries = append(deliveries, deliveryRecord{agentID, groveID, message, interrupt})
+		mu.Unlock()
+		done <- struct{}{}
+		return nil
+	})
+	defer buf.Close()
+
+	buf.Send("manager", "grove-a", "for-grove-a")
+	buf.Send("manager", "grove-b", "for-grove-b")
+
+	for i := 0; i < 2; i++ {
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			t.Fatal("timed out waiting for delivery")
+		}
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(deliveries) != 2 {
+		t.Fatalf("expected 2 deliveries, got %d", len(deliveries))
+	}
+
+	got := map[string]string{}
+	for _, d := range deliveries {
+		got[d.groveID] = d.message
+	}
+	if got["grove-a"] != "for-grove-a" {
+		t.Errorf("grove-a got %q", got["grove-a"])
+	}
+	if got["grove-b"] != "for-grove-b" {
+		t.Errorf("grove-b got %q", got["grove-b"])
+	}
+}
+
 func TestMessageBuffer_DebounceResetsTimer(t *testing.T) {
 	// Verify that each new message resets the debounce timer, so delivery
 	// happens bufferDelay after the LAST message, not the first.
@@ -158,16 +206,16 @@ func TestMessageBuffer_DebounceResetsTimer(t *testing.T) {
 	var deliveries []deliveryRecord
 	done := make(chan struct{}, 1)
 
-	buf := NewMessageBuffer(150*time.Millisecond, func(agentID, message string, interrupt bool) error {
+	buf := NewMessageBuffer(150*time.Millisecond, func(agentID, groveID, message string, interrupt bool) error {
 		mu.Lock()
-		deliveries = append(deliveries, deliveryRecord{agentID, message, interrupt})
+		deliveries = append(deliveries, deliveryRecord{agentID, groveID, message, interrupt})
 		mu.Unlock()
 		done <- struct{}{}
 		return nil
 	})
 	defer buf.Close()
 
-	buf.Send("agent-1", "first")
+	buf.Send("agent-1", "", "first")
 	time.Sleep(100 * time.Millisecond) // 100ms in — timer should NOT have fired yet
 
 	// Verify no delivery has happened yet (debounce window is 150ms).
@@ -179,7 +227,7 @@ func TestMessageBuffer_DebounceResetsTimer(t *testing.T) {
 	}
 
 	// Send another message — this resets the 150ms timer.
-	buf.Send("agent-1", "second")
+	buf.Send("agent-1", "", "second")
 
 	// Wait 100ms more (200ms total since first, 100ms since second).
 	// Timer should still NOT have fired (needs 150ms from second message).
@@ -213,16 +261,16 @@ func TestMessageBuffer_Close(t *testing.T) {
 	var mu sync.Mutex
 	var deliveries []deliveryRecord
 
-	buf := NewMessageBuffer(10*time.Second, func(agentID, message string, interrupt bool) error {
+	buf := NewMessageBuffer(10*time.Second, func(agentID, groveID, message string, interrupt bool) error {
 		mu.Lock()
-		deliveries = append(deliveries, deliveryRecord{agentID, message, interrupt})
+		deliveries = append(deliveries, deliveryRecord{agentID, groveID, message, interrupt})
 		mu.Unlock()
 		return nil
 	})
 
 	// Send messages with a very long delay (10s) so they won't auto-flush.
-	buf.Send("agent-1", "pending-1")
-	buf.Send("agent-2", "pending-2")
+	buf.Send("agent-1", "grove-a", "pending-1")
+	buf.Send("agent-2", "grove-a", "pending-2")
 
 	// Close should flush everything immediately.
 	buf.Close()

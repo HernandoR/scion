@@ -90,10 +90,13 @@ type AgentLookupResult struct {
 // AgentLookup provides agent information for control channel operations.
 type AgentLookup interface {
 	// LookupContainerID returns the container ID for an agent by its slug/name.
-	// Returns empty string if not found or agent doesn't support attach.
-	LookupContainerID(ctx context.Context, slug string) (containerID string, err error)
+	// groveID scopes the lookup to a specific grove to prevent cross-grove
+	// collision when multiple agents share the same slug. Pass empty string
+	// to fall back to name-only lookup (backward compat).
+	LookupContainerID(ctx context.Context, slug, groveID string) (containerID string, err error)
 	// LookupAgent returns detailed lookup info including the runtime that owns the agent.
-	LookupAgent(ctx context.Context, slug string) (*AgentLookupResult, error)
+	// groveID scopes the lookup to a specific grove (same semantics as LookupContainerID).
+	LookupAgent(ctx context.Context, slug, groveID string) (*AgentLookupResult, error)
 	// RuntimeCommand returns the container runtime command (e.g., "docker", "container").
 	RuntimeCommand() string
 }
@@ -126,6 +129,7 @@ type StreamHandler struct {
 	streamID   string
 	streamType string
 	slug       string
+	groveID    string
 	dataCh     chan []byte
 	resizeCh   chan [2]int // [cols, rows]
 	closeCh    chan struct{}
@@ -535,6 +539,7 @@ func (c *ControlChannelClient) handleStreamOpen(data []byte) error {
 		streamID:   open.StreamID,
 		streamType: open.StreamType,
 		slug:       open.Slug,
+		groveID:    open.GroveID,
 		dataCh:     make(chan []byte, 256),
 		resizeCh:   make(chan [2]int, 8),
 		closeCh:    make(chan struct{}),
@@ -657,7 +662,7 @@ func (c *ControlChannelClient) handlePTYStream(handler *StreamHandler, cols, row
 		return
 	}
 
-	result, err := c.agentLookup.LookupAgent(c.ctx, handler.slug)
+	result, err := c.agentLookup.LookupAgent(c.ctx, handler.slug, handler.groveID)
 	if err != nil {
 		c.log.Error("PTY stream failed: agent lookup error", "slug", handler.slug, "error", err)
 		c.CloseStream(handler.streamID, fmt.Sprintf("agent lookup failed: %v", err), 404)

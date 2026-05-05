@@ -1244,7 +1244,7 @@ func (s *Server) sendMessage(w http.ResponseWriter, r *http.Request, id, groveID
 	// bytes via tmux send-keys with no trailing Enter keypresses.
 	isRaw := req.StructuredMessage != nil && req.StructuredMessage.Raw
 	if isRaw {
-		if err := mgr.MessageRaw(ctx, id, deliveryText); err != nil {
+		if err := mgr.MessageRaw(ctx, id, groveID, deliveryText); err != nil {
 			if strings.Contains(err.Error(), "not found") {
 				NotFound(w, "Agent")
 				return
@@ -1253,7 +1253,7 @@ func (s *Server) sendMessage(w http.ResponseWriter, r *http.Request, id, groveID
 			return
 		}
 	} else {
-		if err := mgr.Message(ctx, id, deliveryText, req.Interrupt); err != nil {
+		if err := mgr.Message(ctx, id, groveID, deliveryText, req.Interrupt); err != nil {
 			if strings.Contains(err.Error(), "not found") {
 				NotFound(w, "Agent")
 				return

@@ -231,7 +231,8 @@ func (s *Server) handleAgentAttach(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Look up agent using LookupAgent for runtime-aware info
-	result, err := s.LookupAgent(ctx, agentID)
+	groveID := r.URL.Query().Get("groveId")
+	result, err := s.LookupAgent(ctx, agentID, groveID)
 	if err != nil {
 		NotFound(w, "Agent")
 		return

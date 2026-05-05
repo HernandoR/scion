@@ -922,19 +922,19 @@ func (s *Server) discoverAuxiliaryRuntimes() {
 
 // LookupContainerID implements AgentLookup interface.
 // It looks up an agent by slug and returns its container ID.
-func (s *Server) LookupContainerID(ctx context.Context, slug string) (string, error) {
+// groveID scopes the lookup to prevent cross-grove collision.
+func (s *Server) LookupContainerID(ctx context.Context, slug, groveID string) (string, error) {
 	if s.manager == nil {
 		return "", fmt.Errorf("agent manager not available")
 	}
 
-	// Normalize slug to lowercase for case-insensitive lookup
 	slug = strings.ToLower(slug)
 
-	// Look up agent using List with filter by name.
-	// LookupContainerID is used for internal broker operations (e.g. attach)
-	// where grove scoping is not available. Name-only lookup is acceptable
-	// here because the caller already resolved the agent identity.
 	filter := map[string]string{"scion.name": slug}
+	if groveID != "" {
+		filter["scion.grove_id"] = groveID
+	}
+
 	agents, err := s.manager.List(ctx, filter)
 	if err != nil {
 		return "", fmt.Errorf("failed to list agents: %w", err)
@@ -955,6 +955,30 @@ func (s *Server) LookupContainerID(ctx context.Context, slug string) (string, er
 				agents = auxAgents
 				slog.Debug("Agent found via auxiliary runtime", "slug", slug, "runtime", rtName)
 				break
+			}
+		}
+	}
+
+	// Backward compatibility: retry without grove filter for containers
+	// that lack the scion.grove_id label (pre-existing agents or solo/CLI mode).
+	if len(agents) == 0 && groveID != "" {
+		fallbackFilter := map[string]string{"scion.name": slug}
+		agents, err = s.manager.List(ctx, fallbackFilter)
+		if err == nil && len(agents) == 0 {
+			s.auxiliaryRuntimesMu.RLock()
+			auxRuntimes := make(map[string]auxiliaryRuntime, len(s.auxiliaryRuntimes))
+			for k, v := range s.auxiliaryRuntimes {
+				auxRuntimes[k] = v
+			}
+			s.auxiliaryRuntimesMu.RUnlock()
+
+			for rtName, aux := range auxRuntimes {
+				auxAgents, auxErr := aux.Manager.List(ctx, fallbackFilter)
+				if auxErr == nil && len(auxAgents) > 0 {
+					agents = auxAgents
+					slog.Debug("Agent found via auxiliary runtime (fallback)", "slug", slug, "runtime", rtName)
+					break
+				}
 			}
 		}
 	}
@@ -982,13 +1006,17 @@ func (s *Server) LookupContainerID(ctx context.Context, slug string) (string, er
 
 // LookupAgent implements AgentLookup interface.
 // It looks up an agent by slug and returns detailed info including the runtime.
-func (s *Server) LookupAgent(ctx context.Context, slug string) (*AgentLookupResult, error) {
+// groveID scopes the lookup to prevent cross-grove collision.
+func (s *Server) LookupAgent(ctx context.Context, slug, groveID string) (*AgentLookupResult, error) {
 	if s.manager == nil {
 		return nil, fmt.Errorf("agent manager not available")
 	}
 
 	slug = strings.ToLower(slug)
 	filter := map[string]string{"scion.name": slug}
+	if groveID != "" {
+		filter["scion.grove_id"] = groveID
+	}
 
 	// Try default manager first
 	agents, err := s.manager.List(ctx, filter)
@@ -1016,6 +1044,32 @@ func (s *Server) LookupAgent(ctx context.Context, slug string) (*AgentLookupResu
 				matchedRuntime = aux.Runtime
 				slog.Debug("Agent found via auxiliary runtime", "slug", slug, "runtime", rtName)
 				break
+			}
+		}
+	}
+
+	// Backward compatibility: retry without grove filter for containers
+	// that lack the scion.grove_id label (pre-existing agents or solo/CLI mode).
+	if len(agents) == 0 && groveID != "" {
+		fallbackFilter := map[string]string{"scion.name": slug}
+		agents, err = s.manager.List(ctx, fallbackFilter)
+		if err == nil && len(agents) == 0 {
+			s.auxiliaryRuntimesMu.RLock()
+			auxRuntimes := make(map[string]auxiliaryRuntime, len(s.auxiliaryRuntimes))
+			for k, v := range s.auxiliaryRuntimes {
+				auxRuntimes[k] = v
+			}
+			s.auxiliaryRuntimesMu.RUnlock()
+
+			for rtName, aux := range auxRuntimes {
+				auxAgents, auxErr := aux.Manager.List(ctx, fallbackFilter)
+				if auxErr == nil && len(auxAgents) > 0 {
+					agents = auxAgents
+					runtimeName = rtName
+					matchedRuntime = aux.Runtime
+					slog.Debug("Agent found via auxiliary runtime (fallback)", "slug", slug, "runtime", rtName)
+					break
+				}
 			}
 		}
 	}

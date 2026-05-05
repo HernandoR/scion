@@ -244,7 +244,9 @@ func main() {
 		log.Error("failed to load space links", "error", err)
 	} else {
 		for _, link := range links {
-			pattern := fmt.Sprintf("scion.grove.%s.>", link.GroveID)
+			// Subscribe only to user-targeted messages so that agent-to-agent
+			// traffic and broadcasts do not leak into chat.
+			pattern := fmt.Sprintf("scion.grove.%s.user.>", link.GroveID)
 			if err := broker.RequestSubscription(pattern); err != nil {
 				log.Warn("failed to request subscription for grove",
 					"grove_id", link.GroveID,

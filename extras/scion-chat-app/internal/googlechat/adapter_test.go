@@ -15,11 +15,16 @@
 package googlechat
 
 import (
+	"encoding/json"
 	"log/slog"
 	"testing"
 
 	"github.com/GoogleCloudPlatform/scion/extras/scion-chat-app/internal/chatapp"
 )
+
+func jsonNumber(s string) json.Number {
+	return json.Number(s)
+}
 
 func TestNormalizeEvent_UserEmail(t *testing.T) {
 	adapter := NewAdapter(Config{}, nil, nil, slog.Default())
@@ -100,6 +105,231 @@ func TestNormalizeEvent_UserEmail(t *testing.T) {
 			}
 			if event.Platform != PlatformName {
 				t.Errorf("Platform = %q, want %q", event.Platform, PlatformName)
+			}
+		})
+	}
+}
+
+func TestNormalizeEvent_CommandIDMapping(t *testing.T) {
+	adapter := NewAdapter(Config{
+		CommandIDMap: map[string]string{
+			"1": "scion",
+			"2": "scionAdmin",
+		},
+	}, nil, nil, slog.Default())
+
+	tests := []struct {
+		name        string
+		commandID   string
+		wantCommand string
+	}{
+		{
+			name:        "command ID 1 maps to scion",
+			commandID:   "1",
+			wantCommand: "scion",
+		},
+		{
+			name:        "command ID 2 maps to scionAdmin",
+			commandID:   "2",
+			wantCommand: "scionAdmin",
+		},
+		{
+			name:        "unknown command ID falls back to scion",
+			commandID:   "99",
+			wantCommand: "scion",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			event := adapter.normalizeEvent(&rawEvent{
+				Chat: &rawChatPayload{
+					User: &rawUser{Name: "users/1", Email: "u@e.com"},
+					AppCommandPayload: &rawAppCommandPayload{
+						Space:              &rawSpace{Name: "spaces/s"},
+						AppCommandMetadata: &rawAppCommandMetadata{AppCommandId: jsonNumber(tt.commandID)},
+					},
+				},
+			})
+			if event == nil {
+				t.Fatal("normalizeEvent returned nil")
+			}
+			if event.Command != tt.wantCommand {
+				t.Errorf("Command = %q, want %q", event.Command, tt.wantCommand)
+			}
+		})
+	}
+}
+
+func TestNormalizeEvent_CommandNameFromText(t *testing.T) {
+	adapter := NewAdapter(Config{}, nil, nil, slog.Default())
+
+	tests := []struct {
+		name        string
+		raw         rawEvent
+		wantCommand string
+	}{
+		{
+			name: "appCommandPayload resolves command name from message text",
+			raw: rawEvent{
+				Chat: &rawChatPayload{
+					User: &rawUser{Name: "users/1", Email: "u@e.com"},
+					AppCommandPayload: &rawAppCommandPayload{
+						Space:              &rawSpace{Name: "spaces/s"},
+						AppCommandMetadata: &rawAppCommandMetadata{AppCommandId: jsonNumber("99")},
+						Message: &rawMessage{
+							Text:         "/scionAdmin list",
+							ArgumentText: "list",
+						},
+					},
+				},
+			},
+			wantCommand: "scionAdmin",
+		},
+		{
+			name: "messagePayload resolves command name from message text",
+			raw: rawEvent{
+				Chat: &rawChatPayload{
+					User: &rawUser{Name: "users/1", Email: "u@e.com"},
+					MessagePayload: &rawMessagePayload{
+						Space: &rawSpace{Name: "spaces/s"},
+						Message: &rawMessage{
+							Text:         "/scionAdmin help",
+							ArgumentText: "help",
+							SlashCommand: &rawSlashCommand{CommandId: jsonNumber("42")},
+						},
+					},
+				},
+			},
+			wantCommand: "scionAdmin",
+		},
+		{
+			name: "appCommandPayload with no message falls back to scion",
+			raw: rawEvent{
+				Chat: &rawChatPayload{
+					User: &rawUser{Name: "users/1", Email: "u@e.com"},
+					AppCommandPayload: &rawAppCommandPayload{
+						Space:              &rawSpace{Name: "spaces/s"},
+						AppCommandMetadata: &rawAppCommandMetadata{AppCommandId: jsonNumber("99")},
+					},
+				},
+			},
+			wantCommand: "scion",
+		},
+		{
+			name: "appCommandPayload slashCommand fallback resolves from text",
+			raw: rawEvent{
+				Chat: &rawChatPayload{
+					User: &rawUser{Name: "users/1", Email: "u@e.com"},
+					AppCommandPayload: &rawAppCommandPayload{
+						Space: &rawSpace{Name: "spaces/s"},
+						Message: &rawMessage{
+							Text:         "/scionAdmin info",
+							ArgumentText: "info",
+							SlashCommand: &rawSlashCommand{CommandId: jsonNumber("77")},
+						},
+					},
+				},
+			},
+			wantCommand: "scionAdmin",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			event := adapter.normalizeEvent(&tt.raw)
+			if event == nil {
+				t.Fatal("normalizeEvent returned nil")
+			}
+			if event.Command != tt.wantCommand {
+				t.Errorf("Command = %q, want %q", event.Command, tt.wantCommand)
+			}
+		})
+	}
+}
+
+func TestNormalizeEvent_SlashCommandInMessage(t *testing.T) {
+	adapter := NewAdapter(Config{
+		CommandIDMap: map[string]string{
+			"1": "scion",
+			"2": "scionAdmin",
+		},
+	}, nil, nil, slog.Default())
+
+	tests := []struct {
+		name        string
+		raw         rawEvent
+		wantType    chatapp.ChatEventType
+		wantCommand string
+		wantArgs    string
+	}{
+		{
+			name: "messagePayload with slashCommand routes as command",
+			raw: rawEvent{
+				Chat: &rawChatPayload{
+					User: &rawUser{Name: "users/1", Email: "u@e.com"},
+					MessagePayload: &rawMessagePayload{
+						Space: &rawSpace{Name: "spaces/s"},
+						Message: &rawMessage{
+							ArgumentText: "help",
+							SlashCommand: &rawSlashCommand{CommandId: jsonNumber("2")},
+						},
+					},
+				},
+			},
+			wantType:    chatapp.EventCommand,
+			wantCommand: "scionAdmin",
+			wantArgs:    "help",
+		},
+		{
+			name: "messagePayload without slashCommand remains a message",
+			raw: rawEvent{
+				Chat: &rawChatPayload{
+					User: &rawUser{Name: "users/1", Email: "u@e.com"},
+					MessagePayload: &rawMessagePayload{
+						Space:   &rawSpace{Name: "spaces/s"},
+						Message: &rawMessage{Text: "hello"},
+					},
+				},
+			},
+			wantType:    chatapp.EventMessage,
+			wantCommand: "",
+			wantArgs:    "",
+		},
+		{
+			name: "appCommandPayload falls back to message slashCommand",
+			raw: rawEvent{
+				Chat: &rawChatPayload{
+					User: &rawUser{Name: "users/1", Email: "u@e.com"},
+					AppCommandPayload: &rawAppCommandPayload{
+						Space: &rawSpace{Name: "spaces/s"},
+						Message: &rawMessage{
+							ArgumentText: "info",
+							SlashCommand: &rawSlashCommand{CommandId: jsonNumber("2")},
+						},
+					},
+				},
+			},
+			wantType:    chatapp.EventCommand,
+			wantCommand: "scionAdmin",
+			wantArgs:    "info",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			event := adapter.normalizeEvent(&tt.raw)
+			if event == nil {
+				t.Fatal("normalizeEvent returned nil")
+			}
+			if event.Type != tt.wantType {
+				t.Errorf("Type = %q, want %q", event.Type, tt.wantType)
+			}
+			if event.Command != tt.wantCommand {
+				t.Errorf("Command = %q, want %q", event.Command, tt.wantCommand)
+			}
+			if tt.wantArgs != "" && event.Args != tt.wantArgs {
+				t.Errorf("Args = %q, want %q", event.Args, tt.wantArgs)
 			}
 		})
 	}

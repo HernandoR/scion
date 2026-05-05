@@ -495,7 +495,8 @@ func TestNotificationDispatcher_UserSubscriberInboxWithBroker(t *testing.T) {
 	}
 	require.NoError(t, env.store.CreateNotificationSubscription(context.Background(), userSub))
 
-	// Set up a broker proxy — inbox message should come from broker, not direct
+	// Set up a broker proxy — notifications should NOT be routed through the
+	// broker (only explicit scion-message commands use the broker path).
 	rb := &recordingBroker{}
 	proxy := NewMessageBrokerProxy(rb, env.store, env.pub, func() AgentDispatcher { return env.dispatcher }, slog.Default())
 	env.nd.SetBrokerProxy(proxy)
@@ -505,18 +506,19 @@ func TestNotificationDispatcher_UserSubscriberInboxWithBroker(t *testing.T) {
 
 	env.publishStatus("completed")
 
-	// Wait for broker to receive the notification
-	require.Eventually(t, func() bool {
-		return len(rb.getPublishes()) >= 1
-	}, 2*time.Second, 50*time.Millisecond)
+	// Wait for processing
+	time.Sleep(300 * time.Millisecond)
 
-	// No direct inbox message should be created (broker handles persistence)
+	// Broker should NOT receive the notification (only scion message does).
+	assert.Empty(t, rb.getPublishes(), "broker should not receive notification publishes")
+
+	// Inbox message should be created directly for the web UI.
 	msgs, err := env.store.ListMessages(context.Background(), store.MessageFilter{
 		RecipientID: "user-broker-inbox",
 		GroveID:     env.grove.ID,
 	}, store.ListOptions{})
 	require.NoError(t, err)
-	assert.Empty(t, msgs.Items, "no direct inbox message when broker is present")
+	assert.Len(t, msgs.Items, 1, "inbox message should be created directly even when broker is present")
 }
 
 func TestNotificationDispatcher_UserSubscriberInboxWaitingForInput(t *testing.T) {
@@ -939,7 +941,7 @@ func TestNotificationDispatcher_ErrorPhase(t *testing.T) {
 	assert.Equal(t, "ERROR", notifs[0].Status)
 }
 
-func TestNotificationDispatcher_BrokerRoutingOnUserNotification(t *testing.T) {
+func TestNotificationDispatcher_BrokerNotUsedForUserNotification(t *testing.T) {
 	env := setupNotificationTest(t)
 
 	// Replace the agent subscription with a user subscription
@@ -961,7 +963,8 @@ func TestNotificationDispatcher_BrokerRoutingOnUserNotification(t *testing.T) {
 	proxy := NewMessageBrokerProxy(rb, env.store, env.pub, func() AgentDispatcher { return env.dispatcher }, slog.Default())
 	env.nd.SetBrokerProxy(proxy)
 
-	// Also set up a recording channel — should NOT receive anything when broker is present
+	// Also set up a recording channel — should receive the notification since
+	// the broker path is no longer used for notifications.
 	ch := &recordingChannel{name: "test-channel"}
 	env.nd.channelRegistry = &ChannelRegistry{
 		channels: []NotificationChannel{ch},
@@ -974,24 +977,22 @@ func TestNotificationDispatcher_BrokerRoutingOnUserNotification(t *testing.T) {
 
 	env.publishStatus("completed")
 
-	// Wait for broker to receive the notification
-	require.Eventually(t, func() bool {
-		return len(rb.getPublishes()) >= 1
-	}, 2*time.Second, 50*time.Millisecond)
+	// Wait for processing
+	time.Sleep(300 * time.Millisecond)
 
-	// Verify the broker received the notification as a StructuredMessage
-	publishes := rb.getPublishes()
-	assert.Equal(t, "agent:watched-agent", publishes[0].msg.Sender)
-	assert.Equal(t, "user:user-broker", publishes[0].msg.Recipient)
-	assert.Equal(t, messages.TypeStateChange, publishes[0].msg.Type)
-	assert.Contains(t, publishes[0].msg.Msg, "watched-agent has reached a state of COMPLETED")
+	// Broker should NOT receive the notification (only scion message uses broker).
+	assert.Empty(t, rb.getPublishes(), "broker should not receive notification publishes")
 
-	// Verify the topic is the user message topic
-	expectedTopic := broker.TopicUserMessages(env.grove.ID, "user-broker")
-	assert.Equal(t, expectedTopic, publishes[0].topic)
+	// Inbox message should be created directly for the web UI.
+	msgs, err := env.store.ListMessages(context.Background(), store.MessageFilter{
+		RecipientID: "user-broker",
+		GroveID:     env.grove.ID,
+	}, store.ListOptions{})
+	require.NoError(t, err)
+	assert.Len(t, msgs.Items, 1, "inbox message should be created directly")
 
-	// Channel registry should NOT have been called (broker takes priority)
-	assert.Empty(t, ch.getDeliveries())
+	// Channel registry should be called as a fallback for external delivery.
+	assert.Len(t, ch.getDeliveries(), 1, "channel registry should receive the notification")
 }
 
 func TestNotificationDispatcher_FallbackToChannelWhenNoBroker(t *testing.T) {

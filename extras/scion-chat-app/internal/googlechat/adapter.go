@@ -400,11 +400,16 @@ type rawSpace struct {
 }
 
 type rawMessage struct {
-	Name         string          `json:"name"`
-	Text         string          `json:"text"`
-	ArgumentText string          `json:"argumentText"`
-	Thread       *rawThread      `json:"thread,omitempty"`
-	Annotations  []rawAnnotation `json:"annotations,omitempty"`
+	Name         string           `json:"name"`
+	Text         string           `json:"text"`
+	ArgumentText string           `json:"argumentText"`
+	Thread       *rawThread       `json:"thread,omitempty"`
+	Annotations  []rawAnnotation  `json:"annotations,omitempty"`
+	SlashCommand *rawSlashCommand `json:"slashCommand,omitempty"`
+}
+
+type rawSlashCommand struct {
+	CommandId json.Number `json:"commandId"`
 }
 
 type rawThread struct {
@@ -486,7 +491,14 @@ func (a *Adapter) normalizeEvent(raw *rawEvent) *chatapp.ChatEvent {
 			if name, ok := a.commandIDs[cmdID]; ok {
 				event.Command = name
 			} else {
-				event.Command = "scion" // default fallback
+				event.Command = commandNameFromText(p.Message)
+			}
+		} else if p.Message != nil && p.Message.SlashCommand != nil {
+			cmdID := p.Message.SlashCommand.CommandId.String()
+			if name, ok := a.commandIDs[cmdID]; ok {
+				event.Command = name
+			} else {
+				event.Command = commandNameFromText(p.Message)
 			}
 		}
 		if p.Message != nil {
@@ -507,6 +519,17 @@ func (a *Adapter) normalizeEvent(raw *rawEvent) *chatapp.ChatEvent {
 		}
 		if p.Message.Thread != nil {
 			event.ThreadID = p.Message.Thread.Name
+		}
+		if p.Message.SlashCommand != nil {
+			event.Type = chatapp.EventCommand
+			cmdID := p.Message.SlashCommand.CommandId.String()
+			if name, ok := a.commandIDs[cmdID]; ok {
+				event.Command = name
+			} else {
+				event.Command = commandNameFromText(p.Message)
+			}
+			event.Args = strings.TrimSpace(p.Message.ArgumentText)
+			return event
 		}
 		event.Type = chatapp.EventMessage
 		text := p.Message.ArgumentText
@@ -559,6 +582,19 @@ func (a *Adapter) normalizeEvent(raw *rawEvent) *chatapp.ChatEvent {
 		a.log.Debug("no recognized chat payload present")
 		return nil
 	}
+}
+
+// commandNameFromText extracts the slash command name from the message text,
+// falling back to "scion" if the text doesn't contain a recognizable command.
+func commandNameFromText(msg *rawMessage) string {
+	if msg == nil {
+		return "scion"
+	}
+	f := strings.Fields(msg.Text)
+	if len(f) > 0 && strings.HasPrefix(f[0], "/") {
+		return strings.TrimPrefix(f[0], "/")
+	}
+	return "scion"
 }
 
 // getParameters extracts action parameters from commonEventObject.

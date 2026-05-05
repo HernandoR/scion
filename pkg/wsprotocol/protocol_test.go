@@ -138,12 +138,13 @@ func TestResponseEnvelope(t *testing.T) {
 }
 
 func TestStreamOpenMessage(t *testing.T) {
-	msg := NewStreamOpenMessage("stream-1", StreamTypePTY, "agent-123", 120, 40)
+	msg := NewStreamOpenMessage("stream-1", StreamTypePTY, "agent-123", "grove-456", 120, 40)
 
 	assert.Equal(t, TypeStreamOpen, msg.Type)
 	assert.Equal(t, "stream-1", msg.StreamID)
 	assert.Equal(t, StreamTypePTY, msg.StreamType)
 	assert.Equal(t, "agent-123", msg.Slug)
+	assert.Equal(t, "grove-456", msg.GroveID)
 	assert.Equal(t, 120, msg.Cols)
 	assert.Equal(t, 40, msg.Rows)
 }

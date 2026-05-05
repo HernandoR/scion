@@ -299,18 +299,12 @@ func (nd *NotificationDispatcher) storeAndDispatch(ctx context.Context, sub *sto
 		nd.log.Info("Notification dispatched to user via SSE",
 			"subscriberID", sub.SubscriberID, "notificationID", notif.ID)
 
-		if nd.brokerProxy != nil {
-			// Broker plugin present — publish notification as a StructuredMessage
-			// through the broker so the plugin can render it (e.g., as a rich card).
-			// The broker's deliverToUser callback also persists an inbox Message.
-			nd.dispatchToBroker(ctx, sub, notif, agent.ID, agent.Slug)
-		} else {
-			// No broker plugin — persist an inbox message directly so the
-			// notification also appears in the user's message feed, then
-			// fall back to the channel registry for external delivery.
-			nd.createInboxMessage(ctx, sub, notif, agent)
-			nd.dispatchToChannels(ctx, sub, notif, agent.ID, agent.Slug)
-		}
+		// Persist an inbox message for the web UI and fall back to the
+		// channel registry for external delivery. Notifications are NOT
+		// routed through the broker plugin so that only explicit
+		// "scion message" commands produce chat messages.
+		nd.createInboxMessage(ctx, sub, notif, agent)
+		nd.dispatchToChannels(ctx, sub, notif, agent.ID, agent.Slug)
 	default:
 		nd.log.Warn("Unknown subscriber type", "type", sub.SubscriberType)
 	}

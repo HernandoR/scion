@@ -60,7 +60,7 @@ func TestLookupContainerID_DefaultManager(t *testing.T) {
 	rt := &runtime.MockRuntime{NameFunc: func() string { return "docker" }}
 	srv := New(DefaultServerConfig(), mgr, rt)
 
-	containerID, err := srv.LookupContainerID(context.Background(), "myagent")
+	containerID, err := srv.LookupContainerID(context.Background(), "myagent", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestLookupContainerID_CaseInsensitive(t *testing.T) {
 	rt := &runtime.MockRuntime{NameFunc: func() string { return "docker" }}
 	srv := New(DefaultServerConfig(), mgr, rt)
 
-	containerID, err := srv.LookupContainerID(context.Background(), "MyAgent")
+	containerID, err := srv.LookupContainerID(context.Background(), "MyAgent", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -96,7 +96,7 @@ func TestLookupContainerID_NotFound(t *testing.T) {
 	rt := &runtime.MockRuntime{NameFunc: func() string { return "docker" }}
 	srv := New(DefaultServerConfig(), mgr, rt)
 
-	_, err := srv.LookupContainerID(context.Background(), "nonexistent")
+	_, err := srv.LookupContainerID(context.Background(), "nonexistent", "")
 	if err == nil {
 		t.Fatal("expected error for nonexistent agent")
 	}
@@ -137,7 +137,7 @@ func TestLookupContainerID_FallbackToAuxiliary(t *testing.T) {
 	}
 	srv.auxiliaryRuntimesMu.Unlock()
 
-	containerID, err := srv.LookupContainerID(context.Background(), "k8sagent")
+	containerID, err := srv.LookupContainerID(context.Background(), "k8sagent", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -158,7 +158,7 @@ func TestLookupAgent_DefaultRuntime(t *testing.T) {
 	rt := &runtime.MockRuntime{NameFunc: func() string { return "docker" }}
 	srv := New(DefaultServerConfig(), mgr, rt)
 
-	result, err := srv.LookupAgent(context.Background(), "agent1")
+	result, err := srv.LookupAgent(context.Background(), "agent1", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -201,7 +201,7 @@ func TestLookupAgent_K8sAuxiliaryRuntime(t *testing.T) {
 	}
 	srv.auxiliaryRuntimesMu.Unlock()
 
-	result, err := srv.LookupAgent(context.Background(), "k8sagent")
+	result, err := srv.LookupAgent(context.Background(), "k8sagent", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -222,7 +222,7 @@ func TestLookupAgent_NotFound(t *testing.T) {
 	rt := &runtime.MockRuntime{NameFunc: func() string { return "docker" }}
 	srv := New(DefaultServerConfig(), mgr, rt)
 
-	_, err := srv.LookupAgent(context.Background(), "ghost")
+	_, err := srv.LookupAgent(context.Background(), "ghost", "")
 	if err == nil {
 		t.Fatal("expected error for nonexistent agent")
 	}
@@ -244,7 +244,7 @@ func TestLookupAgent_PrefersContainerIDLabel(t *testing.T) {
 	rt := &runtime.MockRuntime{NameFunc: func() string { return "docker" }}
 	srv := New(DefaultServerConfig(), mgr, rt)
 
-	result, err := srv.LookupAgent(context.Background(), "agent1")
+	result, err := srv.LookupAgent(context.Background(), "agent1", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -265,7 +265,7 @@ func TestLookupAgent_FallsBackToContainerID(t *testing.T) {
 	rt := &runtime.MockRuntime{NameFunc: func() string { return "docker" }}
 	srv := New(DefaultServerConfig(), mgr, rt)
 
-	result, err := srv.LookupAgent(context.Background(), "agent1")
+	result, err := srv.LookupAgent(context.Background(), "agent1", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -437,5 +437,88 @@ func TestRuntimeCommand_DefaultFallback(t *testing.T) {
 
 	if got := srv.RuntimeCommand(); got != "docker" {
 		t.Errorf("expected docker fallback, got %s", got)
+	}
+}
+
+func TestLookupContainerID_GroveScopedDisambiguation(t *testing.T) {
+	mgr := &filteringMockManager{}
+	mgr.agents = []api.AgentInfo{
+		{
+			ContainerID: "container-ggcloud",
+			Name:        "foobar",
+			Labels:      map[string]string{"scion.name": "foobar", "scion.grove_id": "grove-aaa"},
+		},
+		{
+			ContainerID: "container-muskateers",
+			Name:        "foobar",
+			Labels:      map[string]string{"scion.name": "foobar", "scion.grove_id": "grove-bbb"},
+		},
+	}
+	rt := &runtime.MockRuntime{NameFunc: func() string { return "docker" }}
+	srv := New(DefaultServerConfig(), mgr, rt)
+
+	// With grove scoping, should get the correct container
+	id, err := srv.LookupContainerID(context.Background(), "foobar", "grove-aaa")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if id != "container-ggcloud" {
+		t.Errorf("expected container-ggcloud, got %s", id)
+	}
+
+	id, err = srv.LookupContainerID(context.Background(), "foobar", "grove-bbb")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if id != "container-muskateers" {
+		t.Errorf("expected container-muskateers, got %s", id)
+	}
+}
+
+func TestLookupAgent_GroveScopedDisambiguation(t *testing.T) {
+	mgr := &filteringMockManager{}
+	mgr.agents = []api.AgentInfo{
+		{
+			ContainerID: "container-ggcloud",
+			Name:        "foobar",
+			Labels:      map[string]string{"scion.name": "foobar", "scion.grove_id": "grove-aaa"},
+		},
+		{
+			ContainerID: "container-storytree",
+			Name:        "foobar",
+			Labels:      map[string]string{"scion.name": "foobar", "scion.grove_id": "grove-ccc"},
+		},
+	}
+	rt := &runtime.MockRuntime{NameFunc: func() string { return "docker" }}
+	srv := New(DefaultServerConfig(), mgr, rt)
+
+	result, err := srv.LookupAgent(context.Background(), "foobar", "grove-ccc")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.ContainerID != "container-storytree" {
+		t.Errorf("expected container-storytree, got %s", result.ContainerID)
+	}
+}
+
+func TestLookupAgent_GroveFallbackForLegacyContainers(t *testing.T) {
+	mgr := &filteringMockManager{}
+	mgr.agents = []api.AgentInfo{
+		{
+			ContainerID: "legacy-container",
+			Name:        "oldagent",
+			Labels:      map[string]string{"scion.name": "oldagent"},
+		},
+	}
+	rt := &runtime.MockRuntime{NameFunc: func() string { return "docker" }}
+	srv := New(DefaultServerConfig(), mgr, rt)
+
+	// Should still find agents without scion.grove_id via fallback
+	result, err := srv.LookupAgent(context.Background(), "oldagent", "some-grove-id")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.ContainerID != "legacy-container" {
+		t.Errorf("expected legacy-container, got %s", result.ContainerID)
 	}
 }
