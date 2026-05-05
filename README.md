@@ -94,6 +94,7 @@ Not all concepts apply in every scenario — local mode is simpler. See [Concept
 
 Visit our **[Documentation Site](https://googlecloudplatform.github.io/scion/)** for comprehensive guides and reference.
 
+- **[中文用户教程（README.zh.md）](README.zh.md)**: Chinese usage guide focused on concepts and operations.
 - **[Overview](https://googlecloudplatform.github.io/scion/overview/)**: Introduction to Scion.
 - **[Installation](https://googlecloudplatform.github.io/scion/getting-started/install/)**: How to get Scion up and running.
 - **[Concepts](https://googlecloudplatform.github.io/scion/concepts/)**: Understanding Agents, Groves, Harnesses, and Runtimes.
